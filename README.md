@@ -14,12 +14,6 @@
 - [Technology Stack](#technology-stack)
 - [Architecture & Design](#architecture--design)
 - [Database Schema](#database-schema)
-- [API Documentation](#api-documentation)
-- [Getting Started](#getting-started)
-- [Running the Application](#running-the-application)
-- [Testing](#testing)
-- [Contact](#contact)
-- [License](#license)
 
 ---
 
@@ -302,34 +296,3 @@ erDiagram
     Image }o--o| Raffle : illustrates
     Image }o--o| User : uploaded_by
     Image }o--|| Association : belongs_to
-
-### Key Business Rules
-
-1.  **User-Association Relationship**: Users are members of associations with specific roles (ADMIN, MEMBER, COLLABORATOR).
-2.  **Raffle Ownership**: Each raffle belongs to exactly one association.
-3.  **Ticket Lifecycle**: A ticket's status transitions from AVAILABLE to RESERVED (in a cart) and finally to SOLD.
-4.  **Order Process**: Orders are created from a cart, contain purchased tickets, have an associated payment, and belong to a customer.
-5.  **Statistics Tracking**: Each raffle has a dedicated statistics record that aggregates sales and performance data in real-time.
-
----
-
-## API Documentation
-
-The Raffleease API is a RESTful service documented using the OpenAPI 3.1.0 specification. The full specification can be found in the `raffleease-openapi.yaml` file in this repository.
-
-### API Endpoint Groups
-
-The API is organized around the following resources:
-
--   **Authentication**: Endpoints for user registration, login, logout, password reset, and token validation.
--   **Tokens**: Functionality for refreshing JWT access tokens.
--   **Associations**: Management of multi-tenant organizations.
--   **Users**: User management within an association.
--   **Images**: Image upload and management for raffles.
--   **Raffles**: Complete lifecycle management of raffles, from creation to completion.
--   **Tickets**: Management and search for raffle tickets.
--   **Customers**: Management of customer information for orders.
--   **Carts**: Shopping cart functionality for reserving tickets before purchase.
--   **Orders**: Order creation, processing, and lifecycle management (complete, cancel, refund).
--   **Payments**: Endpoints related to payment processing.
--   **Notifications**: Services for sending emails and other notifications.
