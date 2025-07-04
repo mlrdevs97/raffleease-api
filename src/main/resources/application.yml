@@ -1,0 +1,87 @@
+server:
+  port: 8080
+
+spring:
+  application:
+    name: RaffleEase
+    hosts:
+      client: ${HOST_CLIENT}
+      server: ${HOST_SERVER}
+    paths:
+      client:
+        payment_success: ${PAYMENT_SUCCESS_PATH}
+    security:
+      jwt:
+        secret_key: ${SECRET_KEY}
+        access_token_expiration: ${TOKEN_ACCESS_EXPIRATION}
+        refresh_token_expiration: ${TOKEN_REFRESH_EXPIRATION}
+    configs:
+      cron:
+        raffles_completion: ${RAFFLES_COMPLETION_CRON}
+        raffles_activation: ${RAFFLES_ACTIVATION_CRON}
+        images_cleanup: ${IMAGES_CLEANUP_CRON}
+        carts_cleanup: ${CARTS_CLEANUP_CRON}
+      cleanup:
+        carts_cleanup_cutoff_seconds: ${CARTS_CLEANUP_CUTOFF_SECONDS}
+        images_cleanup_cutoff_seconds: ${IMAGES_CLEANUP_CUTOFF_SECONDS}
+
+  servlet:
+    multipart:
+      max-file-size: 25MB
+      max-request-size: 100MB
+      file-size-threshold: 2KB
+      location: ${java.io.tmpdir}
+
+  storage:
+    images:
+      base_path: ${IMAGES_BASE_PATH}
+
+  data:
+    redis:
+      host: ${REDIS_HOST}
+      port: ${REDIS_PORT}
+
+  datasource:
+    driver-class-name: org.postgresql.Driver
+    url: jdbc:postgresql://${DB_HOST}:${DB_PORT}/${DB_NAME}
+    username: ${DB_USER}
+    password: ${DB_PASSWORD}
+  jpa:
+    hibernate:
+      ddl-auto: update
+    database: postgresql
+
+mail:
+  API-KEY: ${MAIL_API_KEY}
+  API-URL: ${MAIL_API_URL}
+  SENDER-EMAIL: ${MAIL_SENDER_EMAIL}
+
+rate-limiting:
+  enabled: ${RATE_LIMITING_ENABLED:true}
+  refresh-interval: ${RATE_LIMITING_REFRESH_INTERVAL:1}
+  
+  limits:
+    private:
+      create: ${RATE_LIMIT_PRIVATE_CREATE:50}
+      read: ${RATE_LIMIT_PRIVATE_READ:300}
+      update: ${RATE_LIMIT_PRIVATE_UPDATE:100}
+      delete: ${RATE_LIMIT_PRIVATE_DELETE:30}
+      upload: ${RATE_LIMIT_PRIVATE_UPLOAD:50}
+      test: 3
+      
+    public:
+      search: ${RATE_LIMIT_PUBLIC_SEARCH:500}
+      read: ${RATE_LIMIT_PUBLIC_READ:1000}
+      
+    general:
+      api: ${RATE_LIMIT_GENERAL_API:100}
+      
+  burst:
+    private: ${RATE_LIMIT_BURST_PRIVATE:15}
+    public: ${RATE_LIMIT_BURST_PUBLIC:10}
+    general: ${RATE_LIMIT_BURST_GENERAL:5}
+
+logging:
+  level:
+    com.raffleease.raffleease.Common.RateLimiting: ${LOG_LEVEL_RATE_LIMITING:DEBUG}
+    com.raffleease.raffleease.Common.Aspects.RateLimitingAspect: ${LOG_LEVEL_RATE_LIMITING_ASPECT:DEBUG}

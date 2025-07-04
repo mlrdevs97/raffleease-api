@@ -1,0 +1,36 @@
+services:
+  app:
+    image: mlrdevs/raffleease:latest
+    build: .
+    container_name: raffleease_api
+    ports:
+      - "8080:8080"
+    env_file:
+      - ${ENV_FILE}
+    depends_on:
+      - db
+      - redis
+    restart: always
+
+  db:
+    image: postgres:latest
+    container_name: raffleease_db
+    environment:
+      POSTGRES_DB: ${DB_NAME}
+      POSTGRES_USER: ${DB_USER}
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
+    ports:
+      - ${DB_PORT}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    restart: always
+
+  redis:
+    image: redis:7
+    container_name: raffleease_redis
+    restart: always
+    ports:
+      - ${REDIS_PORT}
+
+volumes:
+  pgdata:

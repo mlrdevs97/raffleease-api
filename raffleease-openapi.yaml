@@ -1,0 +1,4668 @@
+openapi: 3.1.0
+info:
+  title: Raffleease API
+  description: |
+    Raffleease is a RESTful API designed to support the management of online raffles for animal rescue associations. The platform follows a **multi-tenant architecture**, where most endpoints are scoped under a specific association ID to ensure data isolation across organizations.
+    
+    The API implements **JWT-based authentication** with secure refresh token handling via **HTTP-only, same-site, secure cookies**. **Role-based access control** governs permissions across different user types within each association.
+    
+    Search endpoints support **advanced filtering, sorting, and pagination** mechanisms to allow flexible querying of resources. All API responses follow a **consistent, standardized format**, and **error handling** is uniform across the platform to provide clarity for integrators.
+    
+    This documentation should clearly outline available endpoints, authentication flows, security requirements, and expected request and response formats to help developers integrate with the Raffleease platform effectively.    
+
+    ## Key Features
+    
+    ### Multi-Tenant Architecture
+    Most endpoints are scoped under `/associations/{associationId}` to ensure data isolation and support multiple organizations.
+    
+    ### JWT-Based Authentication
+    The API uses JWT access tokens for authentication and secure HTTP-only cookies to manage refresh tokens.
+    
+    ### Role-Based Access Control
+    Access to endpoints is restricted based on user roles within each association:
+    - **ADMIN**: Full administrative access
+    - **MEMBER**: Can manage raffles, tickets, and orders
+    - **COLLABORATOR**: Limited access to view resources
+    
+    ### Search Endpoints with Filtering, Sorting, and Pagination
+    Specific endpoints provide advanced query capabilities with filtering, sorting, and pagination to retrieve and manage large sets of data efficiently.
+    
+    ### Standardized API Responses
+    All responses follow a consistent structure that clearly distinguishes between success and error cases.
+    
+    ### Consistent Error Handling
+    Errors are returned in a uniform format with appropriate HTTP status codes and structured messages to simplify debugging.
+    
+    ### Secure Token Refresh Workflow
+    A dedicated endpoint allows clients to refresh access tokens using secure cookies without exposing them to JavaScript.
+    
+    ### Rate Limiting
+    Requests are throttled per user and operation type to prevent abuse and ensure fair usage of the API. Rate limits vary based on operation type (create, read, update, delete, search) and access level (public/private).
+    
+    ## Authentication
+    
+    Most endpoints require authentication via JWT Bearer tokens. Refresh tokens are managed securely via HTTP-only, same-site, secure cookies.
+    
+    ```
+    Authorization: Bearer <access_token>
+    ```
+    
+    ## Multi-Tenancy
+    
+    Most resources are scoped under a specific association ID to ensure data isolation:
+    
+    ```
+    /v1/associations/{associationId}/users
+    /v1/associations/{associationId}/raffles
+    /v1/associations/{associationId}/orders
+    ```
+    
+    ## Rate Limiting
+    
+    API requests are rate-limited based on:
+    - **Operation Type**: create, read, update, delete, search, upload
+    - **Access Level**: public or private endpoints
+    - **User Identity**: per-user rate limiting for authenticated endpoints
+    
+    When rate limits are exceeded, the API returns a `429 Too Many Requests` response with retry information.
+    
+    ## Error Handling
+    
+    All errors follow a consistent format with meaningful HTTP status codes and structured error responses including error codes for programmatic handling.
+    
+  version: 1.0.0
+  contact:
+    name: Raffleease Support
+    url: https://raffleease.es
+    email: support@raffleease.es
+  license:
+    name: Proprietary
+    url: https://raffleease.es/license
+
+servers:
+  - url: https://api.raffleease.es
+    description: Production Server
+
+security:
+  - bearerAuth: []
+
+tags:
+  - name: Authentication
+    description: User authentication and authorization endpoints
+  - name: Tokens
+    description: Token management and refresh functionality
+  - name: Associations
+    description: Multi-tenant organization management
+  - name: Users
+    description: User management within associations
+  - name: Images
+    description: Image upload and management
+  - name: Raffles
+    description: Raffle creation and management
+  - name: Tickets
+    description: Raffle ticket management
+  - name: Customers
+    description: Customer information management
+  - name: Carts
+    description: Shopping cart functionality and reservations
+  - name: Orders
+    description: Order management and processing
+  - name: Payments
+    description: Payment processing and management
+  - name: Notifications
+    description: Email and notification services
+
+paths:
+  # Authentication Endpoints
+  /v1/auth/register:
+    post:
+      tags:
+        - Authentication
+      summary: Register new association and admin user
+      description: |
+        Creates a new association with an admin user account. This is the primary registration endpoint for new organizations joining the platform.
+        
+        **Process:**
+        1. Creates new association with provided details
+        2. Creates admin user account with ADMIN role
+        3. Creates association membership linking user to association
+        4. Sends email verification link to the user
+        
+        **Note:** Only admin users go through this registration process. Regular users are created by admins through the user management endpoints.
+      operationId: register
+      security: []  # Public endpoint
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RegisterRequest'
+      responses:
+        '200':
+          description: Registration successful - verification email sent
+          headers:
+            X-Rate-Limit-Remaining:
+              $ref: '#/components/headers/X-Rate-Limit-Remaining'
+            X-Rate-Limit-Reset:
+              $ref: '#/components/headers/X-Rate-Limit-Reset'
+            X-Rate-Limit-Limit:
+              $ref: '#/components/headers/X-Rate-Limit-Limit'
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessResponse'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/RegisterResponse'
+              example:
+                success: true
+                message: "New association account created successfully"
+                timestamp: "2024-01-15T10:30:00Z"
+                data:
+                  id: 123
+                  email: "admin@animalrescue.org"
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /v1/auth/verify:
+    post:
+      tags:
+        - Authentication
+      summary: Verify email address
+      description: |
+        Verifies a user's email address using the verification token sent during registration.
+        Users must verify their email before they can successfully log in to the platform.
+      operationId: verifyEmail
+      security: []  # Public endpoint
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/EmailVerificationRequest'
+      responses:
+        '200':
+          description: Email verified successfully
+          headers:
+            X-Rate-Limit-Remaining:
+              $ref: '#/components/headers/X-Rate-Limit-Remaining'
+            X-Rate-Limit-Reset:
+              $ref: '#/components/headers/X-Rate-Limit-Reset'
+            X-Rate-Limit-Limit:
+              $ref: '#/components/headers/X-Rate-Limit-Limit'
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessResponse'
+                  - type: object
+                    properties:
+                      data:
+                        type: "null"
+              example:
+                success: true
+                message: "Account verified successfully"
+                timestamp: "2024-01-15T10:30:00Z"
+                data: null
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /v1/auth/login:
+    post:
+      tags:
+        - Authentication
+      summary: Authenticate user
+      description: |
+        Authenticates a user with their credentials and returns an access token for API access.
+        
+        **Authentication Flow:**
+        1. Validates user credentials (email/username + password)
+        2. Verifies user account is enabled and verified
+        3. Generates JWT access token
+        4. Sets secure refresh token cookie
+        5. Returns access token and user/association information
+        
+        **Identifier:** Can be either email address or username.
+      operationId: login
+      security: []  # Public endpoint
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LoginRequest'
+      responses:
+        '200':
+          description: Authentication successful
+          headers:
+            X-Rate-Limit-Remaining:
+              $ref: '#/components/headers/X-Rate-Limit-Remaining'
+            X-Rate-Limit-Reset:
+              $ref: '#/components/headers/X-Rate-Limit-Reset'
+            X-Rate-Limit-Limit:
+              $ref: '#/components/headers/X-Rate-Limit-Limit'
+            Set-Cookie:
+              description: Secure refresh token cookie
+              schema:
+                type: string
+                example: "refresh_token=eyJhbGciOiJIUzI1NiJ9...; HttpOnly; Secure; SameSite=Strict; Path=/; Max-Age=2592000"
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessResponse'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/AuthResponse'
+              example:
+                success: true
+                message: "User authenticated successfully"
+                timestamp: "2024-01-15T10:30:00Z"
+                data:
+                  accessToken: "eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxMjMiLCJpYXQiOjE2MDk0NTkyMDB9..."
+                  associationId: 456
+                  userId: 123
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /v1/auth/logout:
+    post:
+      tags:
+        - Authentication
+      summary: Logout user
+      description: |
+        Logs out the authenticated user by invalidating their tokens and clearing the refresh token cookie.
+        Requires valid authentication.
+      operationId: logout
+      responses:
+        '204':
+          description: Logout successful - no content returned
+          headers:
+            X-Rate-Limit-Remaining:
+              $ref: '#/components/headers/X-Rate-Limit-Remaining'
+            X-Rate-Limit-Reset:
+              $ref: '#/components/headers/X-Rate-Limit-Reset'
+            X-Rate-Limit-Limit:
+              $ref: '#/components/headers/X-Rate-Limit-Limit'
+            Set-Cookie:
+              description: Clears the refresh token cookie
+              schema:
+                type: string
+                example: "refresh_token=; HttpOnly; Secure; SameSite=Strict; Path=/; Max-Age=0"
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /v1/auth/validate:
+    get:
+      tags:
+        - Authentication
+      summary: Validate authentication
+      description: |
+        Validates the current user's authentication status. 
+        Useful for client applications to verify token validity without making other API calls.
+      operationId: validateAuthentication
+      responses:
+        '200':
+          description: Authentication is valid
+          headers:
+            X-Rate-Limit-Remaining:
+              $ref: '#/components/headers/X-Rate-Limit-Remaining'
+            X-Rate-Limit-Reset:
+              $ref: '#/components/headers/X-Rate-Limit-Reset'
+            X-Rate-Limit-Limit:
+              $ref: '#/components/headers/X-Rate-Limit-Limit'
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessResponse'
+                  - type: object
+                    properties:
+                      data:
+                        type: string
+              example:
+                success: true
+                message: "User authentication validated successfully"
+                timestamp: "2024-01-15T10:30:00Z"
+                data: "User authentication validated successfully"
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /v1/auth/forgot-password:
+    post:
+      tags:
+        - Authentication
+      summary: Request password reset
+      description: |
+        Initiates a password reset process by sending a password reset link to the user's email address.
+        
+        **Security Note:** Returns success response regardless of whether the email exists in the system
+        to prevent email enumeration attacks.
+      operationId: forgotPassword
+      security: []  # Public endpoint
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ForgotPasswordRequest'
+      responses:
+        '200':
+          description: Password reset link sent (or would be sent if email exists)
+          headers:
+            X-Rate-Limit-Remaining:
+              $ref: '#/components/headers/X-Rate-Limit-Remaining'
+            X-Rate-Limit-Reset:
+              $ref: '#/components/headers/X-Rate-Limit-Reset'
+            X-Rate-Limit-Limit:
+              $ref: '#/components/headers/X-Rate-Limit-Limit'
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessResponse'
+                  - type: object
+                    properties:
+                      data:
+                        type: "null"
+              example:
+                success: true
+                message: "Password reset link has been sent successfully"
+                timestamp: "2024-01-15T10:30:00Z"
+                data: null
+        '422':
+          $ref: '#/components/responses/ValidationError'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /v1/auth/reset-password:
+    post:
+      tags:
+        - Authentication
+      summary: Reset password
+      description: |
+        Resets a user's password using a valid password reset token received via email.
+        The token must be valid and not expired (tokens expire after 60 minutes).
+      operationId: resetPassword
+      security: []  # Public endpoint
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ResetPasswordRequest'
+      responses:
+        '200':
+          description: Password reset successful
+          headers:
+            X-Rate-Limit-Remaining:
+              $ref: '#/components/headers/X-Rate-Limit-Remaining'
+            X-Rate-Limit-Reset:
+              $ref: '#/components/headers/X-Rate-Limit-Reset'
+            X-Rate-Limit-Limit:
+              $ref: '#/components/headers/X-Rate-Limit-Limit'
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessResponse'
+                  - type: object
+                    properties:
+                      data:
+                        type: "null"
+              example:
+                success: true
+                message: "Password has been reset successfully"
+                timestamp: "2024-01-15T10:30:00Z"
+                data: null
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  # Image Management Endpoints
+  /v1/associations/{associationId}/images:
+    post:
+      tags:
+        - Images
+      summary: Upload pending images for raffle creation
+      description: |
+        Uploads images during the raffle creation process when the raffle doesn't exist yet.
+        
+        **Usage Context:**
+        - Used during raffle creation workflow
+        - Images are temporarily associated with the authenticated user and association
+        - Images have "PENDING" status until the raffle is created and they are associated with it
+        
+        **Business Rules:**
+        - Minimum 1 image, maximum 10 images per upload
+        - Only ADMIN and MEMBER users can upload images
+        - Images are stored temporarily and will be associated with raffle upon creation completion
+        - Total images (pending + existing) cannot exceed 10 per raffle
+        
+        **File Requirements:**
+        - Supported formats: JPEG, PNG, WebP
+        - Maximum file size: 25MB per file
+        - Maximum request size: 100MB total
+      operationId: uploadPendingImages
+      parameters:
+        - $ref: '#/components/parameters/associationId'
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/ImageUploadRequest'
+            encoding:
+              files:
+                style: form
+                explode: true
+      responses:
+        '200':
+          description: Images uploaded successfully
+          headers:
+            X-Rate-Limit-Remaining:
+              $ref: '#/components/headers/X-Rate-Limit-Remaining'
+            X-Rate-Limit-Reset:
+              $ref: '#/components/headers/X-Rate-Limit-Reset'
+            X-Rate-Limit-Limit:
+              $ref: '#/components/headers/X-Rate-Limit-Limit'
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessResponse'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/ImageResponse'
+              example:
+                success: true
+                message: "New images created successfully"
+                timestamp: "2024-01-15T10:30:00Z"
+                data:
+                  images:
+                    - id: 123
+                      fileName: "rescue-dog.jpg"
+                      filePath: "/images/associations/456/temp/123.jpg"
+                      contentType: "image/jpeg"
+                      url: "https://api.raffleease.es/v1/public/associations/456/images/123"
+                      imageOrder: 0
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '413':
+          description: Payload Too Large - File size exceeds limits
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                success: false
+                message: "File size exceeds maximum allowed limit"
+                timestamp: "2024-01-15T10:30:00Z"
+                statusCode: 413
+                statusText: "Payload Too Large"
+                code: "FILE_STORAGE_ERROR"
+        '415':
+          description: Unsupported Media Type - Invalid file format
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                success: false
+                message: "Unsupported file format. Only JPEG, PNG, and WebP are allowed"
+                timestamp: "2024-01-15T10:30:00Z"
+                statusCode: 415
+                statusText: "Unsupported Media Type"
+                code: "FILE_STORAGE_ERROR"
+        '422':
+          $ref: '#/components/responses/ValidationError'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /v1/associations/{associationId}/images/images:
+    get:
+      tags:
+        - Images
+      summary: Get user's pending images
+      description: |
+        Retrieves all pending images uploaded by the authenticated user for the association.
+        
+        **Usage Context:**
+        - Used during raffle creation to display uploaded images
+        - Returns only images with "PENDING" status belonging to the authenticated user
+        - Useful for showing preview of images before raffle creation completion
+      operationId: getUserPendingImages
+      parameters:
+        - $ref: '#/components/parameters/associationId'
+      responses:
+        '200':
+          description: Pending images retrieved successfully
+          headers:
+            X-Rate-Limit-Remaining:
+              $ref: '#/components/headers/X-Rate-Limit-Remaining'
+            X-Rate-Limit-Reset:
+              $ref: '#/components/headers/X-Rate-Limit-Reset'
+            X-Rate-Limit-Limit:
+              $ref: '#/components/headers/X-Rate-Limit-Limit'
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessResponse'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/UserImagesResponse'
+              example:
+                success: true
+                message: "Images retrieved successfully"
+                timestamp: "2024-01-15T10:30:00Z"
+                data:
+                  images:
+                    - id: 123
+                      fileName: "rescue-dog.jpg"
+                      filePath: "/images/associations/456/temp/123.jpg"
+                      contentType: "image/jpeg"
+                      url: "https://api.raffleease.es/v1/public/associations/456/images/123"
+                      imageOrder: 0
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /v1/associations/{associationId}/images/{imageId}:
+    delete:
+      tags:
+        - Images
+      summary: Delete pending image
+      description: |
+        Soft deletes a pending image uploaded by the authenticated user.
+        
+        **Business Rules:**
+        - Only the user who uploaded the image can delete it
+        - Only images with "PENDING" status can be deleted via this endpoint
+        - Performs soft deletion (marks for deletion rather than immediate removal)
+        - Physical file cleanup happens during scheduled maintenance
+      operationId: deletePendingImage
+      parameters:
+        - $ref: '#/components/parameters/associationId'
+        - name: imageId
+          in: path
+          required: true
+          description: The unique identifier of the image to delete
+          schema:
+            type: integer
+            format: int64
+            minimum: 1
+          example: 123
+      responses:
+        '204':
+          description: Image deleted successfully
+          headers:
+            X-Rate-Limit-Remaining:
+              $ref: '#/components/headers/X-Rate-Limit-Remaining'
+            X-Rate-Limit-Reset:
+              $ref: '#/components/headers/X-Rate-Limit-Reset'
+            X-Rate-Limit-Limit:
+              $ref: '#/components/headers/X-Rate-Limit-Limit'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /v1/associations/{associationId}/raffles/{raffleId}/images:
+    post:
+      tags:
+        - Images
+      summary: Upload images for existing raffle
+      description: |
+        Uploads images for an existing raffle during the editing process.
+        
+        **Usage Context:**
+        - Used during raffle editing when the raffle already exists
+        - Images are directly associated with the specific raffle
+        - Images are immediately set to "PENDING" status until editing is completed
+        
+        **Business Rules:**
+        - Minimum 1 image, maximum 10 images per upload
+        - Total images (existing + new + pending) cannot exceed 10 per raffle
+        - Only ADMIN and MEMBER users can upload images
+        - User must have access to the association and raffle
+      operationId: uploadRaffleImages
+      parameters:
+        - $ref: '#/components/parameters/associationId'
+        - name: raffleId
+          in: path
+          required: true
+          description: The unique identifier of the raffle to upload images for
+          schema:
+            type: integer
+            format: int64
+            minimum: 1
+          example: 789
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/ImageUploadRequest'
+      responses:
+        '200':
+          description: Images uploaded successfully for raffle
+          headers:
+            X-Rate-Limit-Remaining:
+              $ref: '#/components/headers/X-Rate-Limit-Remaining'
+            X-Rate-Limit-Reset:
+              $ref: '#/components/headers/X-Rate-Limit-Reset'
+            X-Rate-Limit-Limit:
+              $ref: '#/components/headers/X-Rate-Limit-Limit'
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessResponse'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/ImageResponse'
+              example:
+                success: true
+                message: "New images created successfully"
+                timestamp: "2024-01-15T10:30:00Z"
+                data:
+                  images:
+                    - id: 124
+                      fileName: "cat-rescue.jpg"
+                      filePath: "/images/associations/456/raffles/789/124.jpg"
+                      contentType: "image/jpeg"
+                      url: "https://api.raffleease.es/v1/public/associations/456/raffles/789/images/124"
+                      imageOrder: 2
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '413':
+          description: Payload Too Large - File size exceeds limits
+        '415':
+          description: Unsupported Media Type - Invalid file format
+        '422':
+          $ref: '#/components/responses/ValidationError'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+    get:
+      tags:
+        - Images
+      summary: Get user's images for raffle
+      description: |
+        Retrieves all images uploaded by the authenticated user for a specific raffle.
+        
+        **Usage Context:**
+        - Used during raffle editing to display user's uploaded images for the raffle
+        - Returns only images with "PENDING" status belonging to the authenticated user for this raffle
+        - Useful for showing preview of changes before raffle edit completion
+      operationId: getUserRaffleImages
+      parameters:
+        - $ref: '#/components/parameters/associationId'
+        - name: raffleId
+          in: path
+          required: true
+          description: The unique identifier of the raffle
+          schema:
+            type: integer
+            format: int64
+            minimum: 1
+          example: 789
+      responses:
+        '200':
+          description: User's raffle images retrieved successfully
+          headers:
+            X-Rate-Limit-Remaining:
+              $ref: '#/components/headers/X-Rate-Limit-Remaining'
+            X-Rate-Limit-Reset:
+              $ref: '#/components/headers/X-Rate-Limit-Reset'
+            X-Rate-Limit-Limit:
+              $ref: '#/components/headers/X-Rate-Limit-Limit'
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessResponse'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/UserImagesResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /v1/associations/{associationId}/raffles/{raffleId}/images/{imageId}:
+    delete:
+      tags:
+        - Images
+      summary: Delete raffle image
+      description: |
+        Soft deletes an image associated with a raffle.
+        
+        **Business Rules:**
+        - Only the user who uploaded the image can delete it (if it's pending)
+        - ADMIN and MEMBER users can delete any raffle images
+        - Performs soft deletion (marks for deletion rather than immediate removal)
+        - Physical file cleanup happens during scheduled maintenance
+      operationId: deleteRaffleImage
+      parameters:
+        - $ref: '#/components/parameters/associationId'
+        - name: raffleId
+          in: path
+          required: true
+          description: The unique identifier of the raffle
+          schema:
+            type: integer
+            format: int64
+            minimum: 1
+          example: 789
+        - name: imageId
+          in: path
+          required: true
+          description: The unique identifier of the image to delete
+          schema:
+            type: integer
+            format: int64
+            minimum: 1
+          example: 124
+      responses:
+        '204':
+          description: Image deleted successfully
+          headers:
+            X-Rate-Limit-Remaining:
+              $ref: '#/components/headers/X-Rate-Limit-Remaining'
+            X-Rate-Limit-Reset:
+              $ref: '#/components/headers/X-Rate-Limit-Reset'
+            X-Rate-Limit-Limit:
+              $ref: '#/components/headers/X-Rate-Limit-Limit'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  # Public Image Serving Endpoints
+  /v1/public/associations/{associationId}/images/{imageId}:
+    get:
+      tags:
+        - Images
+      summary: Get pending image file
+      description: |
+        Serves the actual image file for a pending image.
+        
+        **Usage Context:**
+        - Public endpoint for displaying pending images in client applications
+        - No authentication required
+        - Returns the binary image file with appropriate content-type headers
+        - Used for images that are uploaded during raffle creation but not yet associated with a raffle
+      operationId: getPendingImageFile
+      security: []  # Public endpoint
+      parameters:
+        - $ref: '#/components/parameters/associationId'
+        - name: imageId
+          in: path
+          required: true
+          description: The unique identifier of the image file to retrieve
+          schema:
+            type: integer
+            format: int64
+            minimum: 1
+          example: 123
+      responses:
+        '200':
+          description: Image file retrieved successfully
+          headers:
+            X-Rate-Limit-Remaining:
+              $ref: '#/components/headers/X-Rate-Limit-Remaining'
+            X-Rate-Limit-Reset:
+              $ref: '#/components/headers/X-Rate-Limit-Reset'
+            X-Rate-Limit-Limit:
+              $ref: '#/components/headers/X-Rate-Limit-Limit'
+            Content-Type:
+              description: MIME type of the image
+              schema:
+                type: string
+                enum:
+                  - image/jpeg
+                  - image/png
+                  - image/webp
+              example: "image/jpeg"
+            Content-Length:
+              description: Size of the image file in bytes
+              schema:
+                type: integer
+              example: 1048576
+            Cache-Control:
+              description: Cache control directives
+              schema:
+                type: string
+              example: "public, max-age=86400"
+          content:
+            image/jpeg:
+              schema:
+                type: string
+                format: binary
+            image/png:
+              schema:
+                type: string
+                format: binary
+            image/webp:
+              schema:
+                type: string
+                format: binary
+        '404':
+          description: Image not found or marked for deletion
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                success: false
+                message: "Image not found"
+                timestamp: "2024-01-15T10:30:00Z"
+                statusCode: 404
+                statusText: "Not Found"
+                code: "NOT_FOUND"
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /v1/public/associations/{associationId}/raffles/{raffleId}/images/{imageId}:
+    get:
+      tags:
+        - Images
+      summary: Get raffle image file
+      description: |
+        Serves the actual image file for a raffle image.
+        
+        **Usage Context:**
+        - Public endpoint for displaying raffle images in client applications
+        - No authentication required
+        - Returns the binary image file with appropriate content-type headers
+        - Used for images that are associated with active raffles
+      operationId: getRaffleImageFile
+      security: []  # Public endpoint
+      parameters:
+        - $ref: '#/components/parameters/associationId'
+        - name: raffleId
+          in: path
+          required: true
+          description: The unique identifier of the raffle (for URL structure, not used in logic)
+          schema:
+            type: integer
+            format: int64
+            minimum: 1
+          example: 789
+        - name: imageId
+          in: path
+          required: true
+          description: The unique identifier of the image file to retrieve
+          schema:
+            type: integer
+            format: int64
+            minimum: 1
+          example: 124
+      responses:
+        '200':
+          description: Image file retrieved successfully
+          headers:
+            X-Rate-Limit-Remaining:
+              $ref: '#/components/headers/X-Rate-Limit-Remaining'
+            X-Rate-Limit-Reset:
+              $ref: '#/components/headers/X-Rate-Limit-Reset'
+            X-Rate-Limit-Limit:
+              $ref: '#/components/headers/X-Rate-Limit-Limit'
+            Content-Type:
+              description: MIME type of the image
+              schema:
+                type: string
+                enum:
+                  - image/jpeg
+                  - image/png
+                  - image/webp
+              example: "image/jpeg"
+            Content-Length:
+              description: Size of the image file in bytes
+              schema:
+                type: integer
+              example: 1048576
+            Cache-Control:
+              description: Cache control directives
+              schema:
+                type: string
+              example: "public, max-age=86400"
+          content:
+            image/jpeg:
+              schema:
+                type: string
+                format: binary
+            image/png:
+              schema:
+                type: string
+                format: binary
+            image/webp:
+              schema:
+                type: string
+                format: binary
+        '404':
+          description: Image not found or marked for deletion
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  # Raffle Management Endpoints
+  /v1/associations/{associationId}/raffles:
+    post:
+      tags:
+        - Raffles
+      summary: Create new raffle
+      description: |
+        Creates a new raffle within an association with images and ticket configuration.
+        
+        **Authorization:**
+        - Only ADMIN and MEMBER users can create raffles
+        - User must belong to the target association
+        
+        **Business Rules:**
+        - Requires at least 1 image, maximum 10 images
+        - Start date and end date must be in the future
+        - End date must be after start date
+        - Ticket amount must be positive
+        - Ticket price must be positive
+        - Lower limit must be non-negative
+        
+        **Image Association:**
+        - Uses pending images uploaded by the authenticated user
+        - Images are moved from "PENDING" to "ACTIVE" status
+        - Images are associated with the newly created raffle
+        
+        **Initial Status:** Raffle is created in "PENDING" status
+      operationId: createRaffle
+      parameters:
+        - $ref: '#/components/parameters/associationId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RaffleCreateRequest'
+      responses:
+        '201':
+          description: Raffle created successfully
+          headers:
+            X-Rate-Limit-Remaining:
+              $ref: '#/components/headers/X-Rate-Limit-Remaining'
+            X-Rate-Limit-Reset:
+              $ref: '#/components/headers/X-Rate-Limit-Reset'
+            X-Rate-Limit-Limit:
+              $ref: '#/components/headers/X-Rate-Limit-Limit'
+            Location:
+              description: URL of the created raffle
+              schema:
+                type: string
+                format: uri
+              example: "https://api.raffleease.es/v1/associations/456/raffles/789"
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessResponse'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/RaffleResponse'
+              example:
+                success: true
+                message: "New raffle created successfully"
+                timestamp: "2024-01-15T10:30:00Z"
+                data:
+                  id: 789
+                  associationId: 456
+                  title: "Help Rescue Dogs Find Homes"
+                  status: "PENDING"
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+    get:
+      tags:
+        - Raffles
+      summary: Search raffles
+      description: |
+        Searches for raffles within an association with filtering, sorting, and pagination.
+        
+        **Public Endpoint:** No authentication required
+        
+        **Filtering:**
+        - Filter by title (text search)
+        - Filter by status (PENDING, ACTIVE, PAUSED, COMPLETED)
+        
+        **Sorting:**
+        - Sort by any raffle field (createdAt, endDate, title, etc.)
+        - Supports ascending and descending order
+        
+        **Pagination:**
+        - Page-based pagination with configurable page size
+        - Returns total count and page metadata
+      operationId: searchRaffles
+      security: []  # Public endpoint
+      parameters:
+        - $ref: '#/components/parameters/associationId'
+        - name: title
+          in: query
+          required: false
+          description: Filter by raffle title (case-insensitive partial match)
+          schema:
+            type: string
+          example: "rescue dogs"
+        - name: status
+          in: query
+          required: false
+          description: Filter by raffle status
+          schema:
+            $ref: '#/components/schemas/RaffleStatus'
+        - $ref: '#/components/parameters/pageParam'
+        - $ref: '#/components/parameters/sizeParam'
+        - $ref: '#/components/parameters/sortParam'
+      responses:
+        '200':
+          description: Raffles retrieved successfully
+          headers:
+            X-Rate-Limit-Remaining:
+              $ref: '#/components/headers/X-Rate-Limit-Remaining'
+            X-Rate-Limit-Reset:
+              $ref: '#/components/headers/X-Rate-Limit-Reset'
+            X-Rate-Limit-Limit:
+              $ref: '#/components/headers/X-Rate-Limit-Limit'
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessResponse'
+                  - type: object
+                    properties:
+                      data:
+                        allOf:
+                          - $ref: '#/components/schemas/PageResponse'
+                          - type: object
+                            properties:
+                              content:
+                                type: array
+                                items:
+                                  $ref: '#/components/schemas/RaffleResponse'
+              example:
+                success: true
+                message: "Raffles retrieved successfully"
+                timestamp: "2024-01-15T10:30:00Z"
+                data:
+                  content:
+                    - id: 789
+                      title: "Help Rescue Dogs Find Homes"
+                      status: "ACTIVE"
+                      endDate: "2024-02-15T18:00:00Z"
+                  totalElements: 25
+                  totalPages: 3
+                  size: 20
+                  number: 0
+                  first: true
+                  last: false
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /v1/associations/{associationId}/raffles/{raffleId}:
+    get:
+      tags:
+        - Raffles
+      summary: Get raffle details
+      description: |
+        Retrieves detailed information about a specific raffle including statistics.
+        
+        **Authorization:**
+        - Requires authentication
+        - User must have access to the association
+        
+        **Response includes:**
+        - Complete raffle information
+        - Real-time statistics (sold tickets, revenue, participants, etc.)
+        - Image metadata and URLs
+        - Status and completion information
+      operationId: getRaffle
+      parameters:
+        - $ref: '#/components/parameters/associationId'
+        - name: raffleId
+          in: path
+          required: true
+          description: The unique identifier of the raffle
+          schema:
+            type: integer
+            format: int64
+            minimum: 1
+          example: 789
+      responses:
+        '200':
+          description: Raffle retrieved successfully
+          headers:
+            X-Rate-Limit-Remaining:
+              $ref: '#/components/headers/X-Rate-Limit-Remaining'
+            X-Rate-Limit-Reset:
+              $ref: '#/components/headers/X-Rate-Limit-Reset'
+            X-Rate-Limit-Limit:
+              $ref: '#/components/headers/X-Rate-Limit-Limit'
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessResponse'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/RaffleResponse'
+              example:
+                success: true
+                message: "Raffle retrieved successfully"
+                timestamp: "2024-01-15T10:30:00Z"
+                data:
+                  id: 789
+                  associationId: 456
+                  title: "Help Rescue Dogs Find Homes"
+                  description: "Help us raise funds to provide shelter and care for rescued dogs."
+                  status: "ACTIVE"
+                  ticketPrice: 5.00
+                  totalTickets: 1000
+                  statistics:
+                    soldTickets: 250
+                    revenue: 1250.00
+                    participants: 180
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+    put:
+      tags:
+        - Raffles
+      summary: Edit raffle
+      description: |
+        Updates an existing raffle with new information.
+        
+        **Authorization:**
+        - Only ADMIN and MEMBER users can edit raffles
+        - User must belong to the association
+        
+        **Business Rules:**
+        - Can only edit certain fields (title, description, endDate, images, ticketPrice, totalTickets)
+        - End date must be in the future if provided
+        - Images must be between 1-10 if provided
+        - Ticket price must be positive if provided
+        - Total tickets must be positive if provided
+        
+        **Partial Updates:**
+        - All fields are optional
+        - Only provided fields are updated
+        - Images are replaced entirely if provided
+        
+        **Status Considerations:**
+        - Some fields may have restrictions based on current raffle status
+        - Cannot reduce total tickets below already sold tickets
+      operationId: editRaffle
+      parameters:
+        - $ref: '#/components/parameters/associationId'
+        - name: raffleId
+          in: path
+          required: true
+          description: The unique identifier of the raffle to edit
+          schema:
+            type: integer
+            format: int64
+            minimum: 1
+          example: 789
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RaffleEditRequest'
+      responses:
+        '200':
+          description: Raffle edited successfully
+          headers:
+            X-Rate-Limit-Remaining:
+              $ref: '#/components/headers/X-Rate-Limit-Remaining'
+            X-Rate-Limit-Reset:
+              $ref: '#/components/headers/X-Rate-Limit-Reset'
+            X-Rate-Limit-Limit:
+              $ref: '#/components/headers/X-Rate-Limit-Limit'
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessResponse'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/RaffleResponse'
+              example:
+                success: true
+                message: "Raffle edited successfully"
+                timestamp: "2024-01-15T10:30:00Z"
+                data:
+                  id: 789
+                  title: "Updated: Help Rescue Dogs Find Homes"
+                  status: "ACTIVE"
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+    delete:
+      tags:
+        - Raffles
+      summary: Delete raffle
+      description: |
+        Deletes a raffle from the system.
+        
+        **Authorization:**
+        - Only ADMIN and MEMBER users can delete raffles
+        - User must belong to the association
+        
+        **Business Rules:**
+        - Can only delete raffles in "PENDING" status
+        - Raffles with any other status cannot be deleted
+        - This is a hard delete operation
+        
+        **Side Effects:**
+        - Associated images are marked for deletion
+        - Associated tickets are removed
+        - Operation is irreversible
+      operationId: deleteRaffle
+      parameters:
+        - $ref: '#/components/parameters/associationId'
+        - name: raffleId
+          in: path
+          required: true
+          description: The unique identifier of the raffle to delete
+          schema:
+            type: integer
+            format: int64
+            minimum: 1
+          example: 789
+      responses:
+        '204':
+          description: Raffle deleted successfully
+          headers:
+            X-Rate-Limit-Remaining:
+              $ref: '#/components/headers/X-Rate-Limit-Remaining'
+            X-Rate-Limit-Reset:
+              $ref: '#/components/headers/X-Rate-Limit-Reset'
+            X-Rate-Limit-Limit:
+              $ref: '#/components/headers/X-Rate-Limit-Limit'
+        '400':
+          description: Bad Request - Raffle cannot be deleted (not in PENDING status)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                success: false
+                message: "Only raffles in 'PENDING' state can be deleted."
+                timestamp: "2024-01-15T10:30:00Z"
+                statusCode: 400
+                statusText: "Bad Request"
+                code: "BUSINESS_ERROR"
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /v1/associations/{associationId}/raffles/{raffleId}/status:
+    patch:
+      tags:
+        - Raffles
+      summary: Update raffle status
+      description: |
+        Updates the status of a raffle with complex business rule validation.
+        
+        **Authorization:**
+        - Only ADMIN and MEMBER users can update raffle status
+        - User must belong to the association
+        
+        **Status Transitions:**
+        
+        **PENDING → ACTIVE:**
+        - Validates end date is at least 24 hours in the future
+        - Sets start date to current time
+        
+        **ACTIVE → PAUSED:**
+        - Direct transition allowed
+        - Temporarily stops ticket sales
+        
+        **PAUSED → ACTIVE:**
+        - Validates end date is at least 24 hours in the future
+        - Resumes ticket sales
+        
+        **ACTIVE/PAUSED → COMPLETED:**
+        - Manual completion
+        - Sets completion reason to "MANUALLY_COMPLETED"
+        - Sets completed timestamp
+        
+        **COMPLETED → ACTIVE (Reactivation):**
+        - Cannot reactivate if raffle has a winner
+        - End date must be at least 24 hours in the future
+        - Must have available tickets (total > sold)
+        - Clears completion reason and timestamp
+        
+        **Invalid Transitions:**
+        - Cannot revert to PENDING status
+        - Other invalid transitions return business errors
+        
+        **Automatic Completion:**
+        - System automatically completes raffles when all tickets are sold
+        - System automatically completes raffles when end date is reached
+      operationId: updateRaffleStatus
+      parameters:
+        - $ref: '#/components/parameters/associationId'
+        - name: raffleId
+          in: path
+          required: true
+          description: The unique identifier of the raffle
+          schema:
+            type: integer
+            format: int64
+            minimum: 1
+          example: 789
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/StatusUpdateRequest'
+      responses:
+        '200':
+          description: Raffle status updated successfully
+          headers:
+            X-Rate-Limit-Remaining:
+              $ref: '#/components/headers/X-Rate-Limit-Remaining'
+            X-Rate-Limit-Reset:
+              $ref: '#/components/headers/X-Rate-Limit-Reset'
+            X-Rate-Limit-Limit:
+              $ref: '#/components/headers/X-Rate-Limit-Limit'
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessResponse'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/RaffleResponse'
+              example:
+                success: true
+                message: "Raffle status updated successfully"
+                timestamp: "2024-01-15T10:30:00Z"
+                data:
+                  id: 789
+                  status: "ACTIVE"
+                  startDate: "2024-01-15T10:30:00Z"
+        '400':
+          description: Bad Request - Invalid status transition
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                invalidTransition:
+                  value:
+                    success: false
+                    message: "Cannot revert to 'PENDING' state."
+                    timestamp: "2024-01-15T10:30:00Z"
+                    statusCode: 400
+                    statusText: "Bad Request"
+                    code: "BUSINESS_ERROR"
+                endDateTooSoon:
+                  value:
+                    success: false
+                    message: "The end date of the raffle must be at least one day after the current date to reactivate"
+                    timestamp: "2024-01-15T10:30:00Z"
+                    statusCode: 400
+                    statusText: "Bad Request"
+                    code: "BUSINESS_ERROR"
+                hasWinner:
+                  value:
+                    success: false
+                    message: "Cannot reactivate a raffle that already has a winner"
+                    timestamp: "2024-01-15T10:30:00Z"
+                    statusCode: 400
+                    statusText: "Bad Request"
+                    code: "BUSINESS_ERROR"
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /v1/associations/{associationId}/carts:
+    post:
+      tags:
+        - Carts
+      summary: Create new cart
+      description: |
+        Creates a new shopping cart for ticket reservations.
+        
+        **Business Rules:**
+        - Only one active cart per user is allowed
+        - Previous active carts are automatically closed
+        - Cart is associated with the authenticated user
+        - Cart starts in ACTIVE status
+      operationId: createCart
+      parameters:
+        - $ref: '#/components/parameters/associationId'
+      responses:
+        '201':
+          description: Cart created successfully
+          headers:
+            X-Rate-Limit-Remaining:
+              $ref: '#/components/headers/X-Rate-Limit-Remaining'
+            X-Rate-Limit-Reset:
+              $ref: '#/components/headers/X-Rate-Limit-Reset'
+            X-Rate-Limit-Limit:
+              $ref: '#/components/headers/X-Rate-Limit-Limit'
+            Location:
+              description: URL of the created cart
+              schema:
+                type: string
+                format: uri
+              example: "https://api.raffleease.es/v1/associations/456/carts/123"
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessResponse'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/CartResponse'
+              example:
+                success: true
+                message: "New cart created successfully"
+                timestamp: "2024-01-15T10:30:00Z"
+                data:
+                  id: 123
+                  userId: 456
+                  tickets: []
+                  status: "ACTIVE"
+                  createdAt: "2024-01-15T10:30:00Z"
+                  updatedAt: "2024-01-15T10:30:00Z"
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /v1/associations/{associationId}/carts/active:
+    get:
+      tags:
+        - Carts
+      summary: Get user's active cart
+      description: |
+        Retrieves the authenticated user's active cart.
+        
+        **Business Rules:**
+        - Returns the user's most recently created ACTIVE cart
+        - Returns 404 if no active cart exists
+        - Includes all reserved tickets in the cart
+      operationId: getUserActiveCart
+      parameters:
+        - $ref: '#/components/parameters/associationId'
+      responses:
+        '200':
+          description: Active cart retrieved successfully
+          headers:
+            X-Rate-Limit-Remaining:
+              $ref: '#/components/headers/X-Rate-Limit-Remaining'
+            X-Rate-Limit-Reset:
+              $ref: '#/components/headers/X-Rate-Limit-Reset'
+            X-Rate-Limit-Limit:
+              $ref: '#/components/headers/X-Rate-Limit-Limit'
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessResponse'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/CartResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /v1/associations/{associationId}/carts/{cartId}:
+    get:
+      tags:
+        - Carts
+      summary: Get cart by ID
+      description: |
+        Retrieves a specific cart by its ID.
+        
+        **Business Rules:**
+        - User must own the cart or have appropriate permissions
+        - Returns cart in any status (ACTIVE, EXPIRED, CLOSED)
+        - Includes all tickets associated with the cart
+      operationId: getCart
+      parameters:
+        - $ref: '#/components/parameters/associationId'
+        - name: cartId
+          in: path
+          required: true
+          description: The unique identifier of the cart
+          schema:
+            type: integer
+            format: int64
+            minimum: 1
+          example: 123
+      responses:
+        '200':
+          description: Cart retrieved successfully
+          headers:
+            X-Rate-Limit-Remaining:
+              $ref: '#/components/headers/X-Rate-Limit-Remaining'
+            X-Rate-Limit-Reset:
+              $ref: '#/components/headers/X-Rate-Limit-Reset'
+            X-Rate-Limit-Limit:
+              $ref: '#/components/headers/X-Rate-Limit-Limit'
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessResponse'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/CartResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /v1/associations/{associationId}/carts/{cartId}/reservations:
+    post:
+      tags:
+        - Carts
+      summary: Reserve tickets in cart
+      description: |
+        Reserves specific tickets in a cart.
+        
+        **Business Rules:**
+        - Cart must be in ACTIVE status
+        - Tickets must be in AVAILABLE status
+        - Tickets are moved to RESERVED status
+        - User must own the cart
+        - Tickets are temporarily held for the user
+      operationId: reserveTickets
+      parameters:
+        - $ref: '#/components/parameters/associationId'
+        - name: cartId
+          in: path
+          required: true
+          description: The unique identifier of the cart
+          schema:
+            type: integer
+            format: int64
+            minimum: 1
+          example: 123
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ReservationRequest'
+      responses:
+        '200':
+          description: Tickets reserved successfully
+          headers:
+            X-Rate-Limit-Remaining:
+              $ref: '#/components/headers/X-Rate-Limit-Remaining'
+            X-Rate-Limit-Reset:
+              $ref: '#/components/headers/X-Rate-Limit-Reset'
+            X-Rate-Limit-Limit:
+              $ref: '#/components/headers/X-Rate-Limit-Limit'
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessResponse'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/CartResponse'
+              example:
+                success: true
+                message: "New reservation generated successfully"
+                timestamp: "2024-01-15T10:30:00Z"
+                data:
+                  id: 123
+                  userId: 456
+                  tickets:
+                    - id: 789
+                      ticketNumber: "R1001"
+                      status: "RESERVED"
+                      raffleId: 101
+                  status: "ACTIVE"
+        '400':
+          description: Bad Request - Invalid ticket IDs or tickets not available
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                success: false
+                message: "One or more tickets are not available for reservation"
+                timestamp: "2024-01-15T10:30:00Z"
+                statusCode: 400
+                statusText: "Bad Request"
+                code: "BUSINESS_ERROR"
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+    put:
+      tags:
+        - Carts
+      summary: Release tickets from cart
+      description: |
+        Releases previously reserved tickets from a cart.
+        
+        **Business Rules:**
+        - Cart must be in ACTIVE status
+        - Tickets must be in RESERVED status
+        - Tickets are moved back to AVAILABLE status
+        - User must own the cart
+        - Tickets become available for other users
+      operationId: releaseTickets
+      parameters:
+        - $ref: '#/components/parameters/associationId'
+        - name: cartId
+          in: path
+          required: true
+          description: The unique identifier of the cart
+          schema:
+            type: integer
+            format: int64
+            minimum: 1
+          example: 123
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ReservationRequest'
+      responses:
+        '200':
+          description: Tickets released successfully
+          headers:
+            X-Rate-Limit-Remaining:
+              $ref: '#/components/headers/X-Rate-Limit-Remaining'
+            X-Rate-Limit-Reset:
+              $ref: '#/components/headers/X-Rate-Limit-Reset'
+            X-Rate-Limit-Limit:
+              $ref: '#/components/headers/X-Rate-Limit-Limit'
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessResponse'
+                  - type: object
+                    properties:
+                      data:
+                        type: string
+              example:
+                success: true
+                message: "Tickets released successfully"
+                timestamp: "2024-01-15T10:30:00Z"
+                data: "Tickets released successfully"
+        '400':
+          description: Bad Request - Invalid ticket IDs or tickets not reserved
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                success: false
+                message: "One or more tickets are not reserved in this cart"
+                timestamp: "2024-01-15T10:30:00Z"
+                statusCode: 400
+                statusText: "Bad Request"
+                code: "BUSINESS_ERROR"
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /v1/associations/{associationId}/raffles/{raffleId}/tickets:
+    get:
+      tags:
+        - Tickets
+      summary: Search tickets
+      description: |
+        Searches for tickets in a raffle with filtering and pagination.
+        
+        **Filtering:**
+        - Filter by ticket number
+        - Filter by status (AVAILABLE, RESERVED, SOLD)
+        - Filter by customer ID
+        
+        **Pagination:**
+        - Page-based pagination with configurable page size
+        - Returns total count and page metadata
+      operationId: searchTickets
+      parameters:
+        - $ref: '#/components/parameters/associationId'
+        - name: raffleId
+          in: path
+          required: true
+          description: The unique identifier of the raffle
+          schema:
+            type: integer
+            format: int64
+            minimum: 1
+          example: 101
+        - name: ticketNumber
+          in: query
+          required: false
+          description: Filter by ticket number (exact match)
+          schema:
+            type: string
+          example: "R1001"
+        - name: status
+          in: query
+          required: false
+          description: Filter by ticket status
+          schema:
+            $ref: '#/components/schemas/TicketStatus'
+        - name: customerId
+          in: query
+          required: false
+          description: Filter by customer ID (for sold tickets)
+          schema:
+            type: integer
+            format: int64
+            minimum: 1
+          example: 789
+        - $ref: '#/components/parameters/pageParam'
+        - $ref: '#/components/parameters/sizeParam'
+        - $ref: '#/components/parameters/sortParam'
+      responses:
+        '200':
+          description: Tickets retrieved successfully
+          headers:
+            X-Rate-Limit-Remaining:
+              $ref: '#/components/headers/X-Rate-Limit-Remaining'
+            X-Rate-Limit-Reset:
+              $ref: '#/components/headers/X-Rate-Limit-Reset'
+            X-Rate-Limit-Limit:
+              $ref: '#/components/headers/X-Rate-Limit-Limit'
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessResponse'
+                  - type: object
+                    properties:
+                      data:
+                        allOf:
+                          - $ref: '#/components/schemas/PageResponse'
+                          - type: object
+                            properties:
+                              content:
+                                type: array
+                                items:
+                                  $ref: '#/components/schemas/TicketResponse'
+              example:
+                success: true
+                message: "Tickets retrieved successfully"
+                timestamp: "2024-01-15T10:30:00Z"
+                data:
+                  content:
+                    - id: 789
+                      ticketNumber: "R1001"
+                      status: "AVAILABLE"
+                      raffleId: 101
+                  totalElements: 1000
+                  totalPages: 50
+                  size: 20
+                  number: 0
+                  first: true
+                  last: false
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /v1/associations/{associationId}/raffles/{raffleId}/tickets/random:
+    get:
+      tags:
+        - Tickets
+      summary: Get random tickets
+      description: |
+        Retrieves a specified number of random available tickets from a raffle.
+        
+        **Business Rules:**
+        - Only returns tickets in AVAILABLE status
+        - Randomization is truly random (not sequential)
+        - Returns fewer tickets if not enough available
+      operationId: getRandomTickets
+      parameters:
+        - $ref: '#/components/parameters/associationId'
+        - name: raffleId
+          in: path
+          required: true
+          description: The unique identifier of the raffle
+          schema:
+            type: integer
+            format: int64
+            minimum: 1
+          example: 101
+        - name: quantity
+          in: query
+          required: true
+          description: Number of random tickets to retrieve
+          schema:
+            type: integer
+            format: int64
+            minimum: 1
+            maximum: 100
+          example: 5
+      responses:
+        '200':
+          description: Random tickets retrieved successfully
+          headers:
+            X-Rate-Limit-Remaining:
+              $ref: '#/components/headers/X-Rate-Limit-Remaining'
+            X-Rate-Limit-Reset:
+              $ref: '#/components/headers/X-Rate-Limit-Reset'
+            X-Rate-Limit-Limit:
+              $ref: '#/components/headers/X-Rate-Limit-Limit'
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessResponse'
+                  - type: object
+                    properties:
+                      data:
+                        type: array
+                        items:
+                          $ref: '#/components/schemas/TicketResponse'
+              example:
+                success: true
+                message: "Random tickets retrieved successfully"
+                timestamp: "2024-01-15T10:30:00Z"
+                data:
+                  - id: 789
+                    ticketNumber: "R1001"
+                    status: "AVAILABLE"
+                    raffleId: 101
+                  - id: 790
+                    ticketNumber: "R1002"
+                    status: "AVAILABLE"
+                    raffleId: 101
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /v1/associations/{associationId}/orders:
+    post:
+      tags:
+        - Orders
+      summary: Create new order
+      description: |
+        Creates a new order from a cart with reserved tickets.
+        
+        **Business Rules:**
+        - Cart must be in ACTIVE status
+        - Tickets must be in RESERVED status
+        - User must own the cart
+        - Creates or updates customer record
+        - Cart is marked as CLOSED
+        - Tickets are marked as SOLD
+        - Order starts in PENDING status
+        - Raffle statistics are updated
+        - Confirmation email is sent
+        
+        **Process Flow:**
+        1. Validates cart and ticket status
+        2. Creates/updates customer record
+        3. Creates order in PENDING status
+        4. Associates tickets with customer
+        5. Updates raffle statistics
+        6. Closes cart
+        7. Sends confirmation email
+      operationId: createOrder
+      parameters:
+        - $ref: '#/components/parameters/associationId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/OrderCreateRequest'
+      responses:
+        '201':
+          description: Order created successfully
+          headers:
+            X-Rate-Limit-Remaining:
+              $ref: '#/components/headers/X-Rate-Limit-Remaining'
+            X-Rate-Limit-Reset:
+              $ref: '#/components/headers/X-Rate-Limit-Reset'
+            X-Rate-Limit-Limit:
+              $ref: '#/components/headers/X-Rate-Limit-Limit'
+            Location:
+              description: URL of the created order
+              schema:
+                type: string
+                format: uri
+              example: "https://api.raffleease.es/v1/associations/456/orders/789"
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessResponse'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/OrderResponse'
+              example:
+                success: true
+                message: "New order created successfully"
+                timestamp: "2024-01-15T10:30:00Z"
+                data:
+                  id: 789
+                  orderReference: "ORD-20240115-789"
+                  status: "PENDING"
+                  total: 25.00
+                  tickets:
+                    - id: 123
+                      ticketNumber: "R1001"
+                      status: "SOLD"
+                  customer:
+                    id: 456
+                    fullName: "John Doe"
+                    email: "john.doe@example.com"
+                  createdAt: "2024-01-15T10:30:00Z"
+        '400':
+          description: Bad Request - Invalid cart or ticket status
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                invalidCart:
+                  value:
+                    success: false
+                    message: "Cart is not in ACTIVE status"
+                    timestamp: "2024-01-15T10:30:00Z"
+                    statusCode: 400
+                    statusText: "Bad Request"
+                    code: "BUSINESS_ERROR"
+                invalidTickets:
+                  value:
+                    success: false
+                    message: "One or more tickets are not in RESERVED status"
+                    timestamp: "2024-01-15T10:30:00Z"
+                    statusCode: 400
+                    statusText: "Bad Request"
+                    code: "BUSINESS_ERROR"
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+    get:
+      tags:
+        - Orders
+      summary: Search orders
+      description: |
+        Searches for orders within an association with filtering, sorting, and pagination.
+        
+        **Authorization:**
+        - Requires authentication
+        - User must have access to the association
+        
+        **Filtering:**
+        - Filter by order reference (partial match)
+        - Filter by order status
+        - Filter by payment method
+        - Filter by customer details (name, email, phone)
+        - Filter by raffle ID
+        - Filter by total amount range
+        - Filter by date ranges (created, completed, cancelled)
+        
+        **Sorting:**
+        - Sort by any order field (createdAt, status, total, etc.)
+        - Supports ascending and descending order
+        
+        **Pagination:**
+        - Page-based pagination with configurable page size
+        - Returns total count and page metadata
+      operationId: searchOrders
+      parameters:
+        - $ref: '#/components/parameters/associationId'
+        - name: status
+          in: query
+          required: false
+          description: Filter by order status
+          schema:
+            $ref: '#/components/schemas/OrderStatus'
+        - name: paymentMethod
+          in: query
+          required: false
+          description: Filter by payment method
+          schema:
+            type: string
+            enum:
+              - CASH
+              - CARD
+              - TRANSFER
+              - OTHER
+        - name: orderReference
+          in: query
+          required: false
+          description: Filter by order reference (case-insensitive partial match)
+          schema:
+            type: string
+          example: "ORD-2024"
+        - name: customerName
+          in: query
+          required: false
+          description: Filter by customer name (case-insensitive partial match)
+          schema:
+            type: string
+          example: "John"
+        - name: customerEmail
+          in: query
+          required: false
+          description: Filter by customer email (case-insensitive partial match)
+          schema:
+            type: string
+          example: "john@example.com"
+        - name: customerPhone
+          in: query
+          required: false
+          description: Filter by customer phone number (partial match)
+          schema:
+            type: string
+          example: "123"
+        - name: raffleId
+          in: query
+          required: false
+          description: Filter by raffle ID
+          schema:
+            type: integer
+            format: int64
+          example: 101
+        - name: minTotal
+          in: query
+          required: false
+          description: Filter by minimum total amount
+          schema:
+            type: number
+            format: double
+          example: 10.00
+        - name: maxTotal
+          in: query
+          required: false
+          description: Filter by maximum total amount
+          schema:
+            type: number
+            format: double
+          example: 100.00
+        - name: createdFrom
+          in: query
+          required: false
+          description: Filter by creation date from (inclusive)
+          schema:
+            type: string
+            format: date-time
+          example: "2024-01-01T00:00:00Z"
+        - name: createdTo
+          in: query
+          required: false
+          description: Filter by creation date to (inclusive)
+          schema:
+            type: string
+            format: date-time
+          example: "2024-01-31T23:59:59Z"
+        - name: completedFrom
+          in: query
+          required: false
+          description: Filter by completion date from (inclusive)
+          schema:
+            type: string
+            format: date-time
+          example: "2024-01-01T00:00:00Z"
+        - name: completedTo
+          in: query
+          required: false
+          description: Filter by completion date to (inclusive)
+          schema:
+            type: string
+            format: date-time
+          example: "2024-01-31T23:59:59Z"
+        - name: cancelledFrom
+          in: query
+          required: false
+          description: Filter by cancellation date from (inclusive)
+          schema:
+            type: string
+            format: date-time
+          example: "2024-01-01T00:00:00Z"
+        - name: cancelledTo
+          in: query
+          required: false
+          description: Filter by cancellation date to (inclusive)
+          schema:
+            type: string
+            format: date-time
+          example: "2024-01-31T23:59:59Z"
+        - $ref: '#/components/parameters/pageParam'
+        - $ref: '#/components/parameters/sizeParam'
+        - $ref: '#/components/parameters/sortParam'
+      responses:
+        '200':
+          description: Orders retrieved successfully
+          headers:
+            X-Rate-Limit-Remaining:
+              $ref: '#/components/headers/X-Rate-Limit-Remaining'
+            X-Rate-Limit-Reset:
+              $ref: '#/components/headers/X-Rate-Limit-Reset'
+            X-Rate-Limit-Limit:
+              $ref: '#/components/headers/X-Rate-Limit-Limit'
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessResponse'
+                  - type: object
+                    properties:
+                      data:
+                        allOf:
+                          - $ref: '#/components/schemas/PageResponse'
+                          - type: object
+                            properties:
+                              content:
+                                type: array
+                                items:
+                                  $ref: '#/components/schemas/OrderResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /v1/associations/{associationId}/orders/{orderId}:
+    get:
+      tags:
+        - Orders
+      summary: Get order details
+      description: |
+        Retrieves detailed information about a specific order.
+        
+        **Authorization:**
+        - Requires authentication
+        - User must have access to the association
+        
+        **Response includes:**
+        - Complete order information
+        - Customer details
+        - Ticket information
+        - Payment details
+        - Status and timestamps
+      operationId: getOrder
+      parameters:
+        - $ref: '#/components/parameters/associationId'
+        - name: orderId
+          in: path
+          required: true
+          description: The unique identifier of the order
+          schema:
+            type: integer
+            format: int64
+            minimum: 1
+          example: 789
+      responses:
+        '200':
+          description: Order retrieved successfully
+          headers:
+            X-Rate-Limit-Remaining:
+              $ref: '#/components/headers/X-Rate-Limit-Remaining'
+            X-Rate-Limit-Reset:
+              $ref: '#/components/headers/X-Rate-Limit-Reset'
+            X-Rate-Limit-Limit:
+              $ref: '#/components/headers/X-Rate-Limit-Limit'
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessResponse'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/OrderResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /v1/associations/{associationId}/orders/{orderId}/complete:
+    put:
+      tags:
+        - Orders
+      summary: Complete order
+      description: |
+        Completes a pending order and processes payment.
+        
+        **Business Rules:**
+        - Order must be in PENDING status
+        - Marks all tickets as SOLD
+        - Updates raffle statistics
+        - Completes raffle if all tickets are sold
+        - Sets payment method
+        - Sends confirmation email
+        
+        **Side Effects:**
+        1. Updates order status to COMPLETED
+        2. Sets completion timestamp
+        3. Updates ticket status to SOLD
+        4. Updates raffle statistics (sold tickets, revenue, etc.)
+        5. May complete raffle if all tickets are sold
+        6. Sends confirmation email to customer
+      operationId: completeOrder
+      parameters:
+        - $ref: '#/components/parameters/associationId'
+        - name: orderId
+          in: path
+          required: true
+          description: The unique identifier of the order
+          schema:
+            type: integer
+            format: int64
+            minimum: 1
+          example: 789
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/OrderComplete'
+      responses:
+        '200':
+          description: Order completed successfully
+          headers:
+            X-Rate-Limit-Remaining:
+              $ref: '#/components/headers/X-Rate-Limit-Remaining'
+            X-Rate-Limit-Reset:
+              $ref: '#/components/headers/X-Rate-Limit-Reset'
+            X-Rate-Limit-Limit:
+              $ref: '#/components/headers/X-Rate-Limit-Limit'
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessResponse'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/OrderResponse'
+        '400':
+          description: Bad Request - Invalid order status transition
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                success: false
+                message: "Unsupported status transition from COMPLETED to COMPLETED"
+                timestamp: "2024-01-15T10:30:00Z"
+                statusCode: 400
+                statusText: "Bad Request"
+                code: "BUSINESS_ERROR"
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /v1/associations/{associationId}/orders/{orderId}/cancel:
+    put:
+      tags:
+        - Orders
+      summary: Cancel order
+      description: |
+        Cancels a pending order.
+        
+        **Business Rules:**
+        - Order must be in PENDING status
+        - Raffle must be in ACTIVE status
+        - Releases all reserved tickets
+        - Updates raffle statistics
+        - Sends cancellation email
+        
+        **Side Effects:**
+        1. Updates order status to CANCELLED
+        2. Sets cancellation timestamp
+        3. Releases tickets back to available pool
+        4. Updates raffle statistics
+        5. Sends cancellation email to customer
+      operationId: cancelOrder
+      parameters:
+        - $ref: '#/components/parameters/associationId'
+        - name: orderId
+          in: path
+          required: true
+          description: The unique identifier of the order
+          schema:
+            type: integer
+            format: int64
+            minimum: 1
+          example: 789
+      responses:
+        '200':
+          description: Order cancelled successfully
+          headers:
+            X-Rate-Limit-Remaining:
+              $ref: '#/components/headers/X-Rate-Limit-Remaining'
+            X-Rate-Limit-Reset:
+              $ref: '#/components/headers/X-Rate-Limit-Reset'
+            X-Rate-Limit-Limit:
+              $ref: '#/components/headers/X-Rate-Limit-Limit'
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessResponse'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/OrderResponse'
+        '400':
+          description: Bad Request - Invalid order status transition or raffle status
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                invalidOrderStatus:
+                  value:
+                    success: false
+                    message: "Unsupported status transition from COMPLETED to CANCELLED"
+                    timestamp: "2024-01-15T10:30:00Z"
+                    statusCode: 400
+                    statusText: "Bad Request"
+                    code: "BUSINESS_ERROR"
+                invalidRaffleStatus:
+                  value:
+                    success: false
+                    message: "Cannot transition order from PENDING to CANCELLED when raffle status is COMPLETED, expected ACTIVE"
+                    timestamp: "2024-01-15T10:30:00Z"
+                    statusCode: 400
+                    statusText: "Bad Request"
+                    code: "BUSINESS_ERROR"
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /v1/associations/{associationId}/orders/{orderId}/refund:
+    put:
+      tags:
+        - Orders
+      summary: Refund order
+      description: |
+        Refunds a completed order.
+        
+        **Authorization:**
+        - Only ADMIN and MEMBER users can refund orders
+        
+        **Business Rules:**
+        - Order must be in COMPLETED status
+        - Can be refunded regardless of raffle status
+        - Releases all sold tickets
+        - Updates raffle statistics
+        - May reactivate raffle if it was completed due to all tickets being sold
+        - Sends refund email
+        
+        **Side Effects:**
+        1. Updates order status to REFUNDED
+        2. Sets refund timestamp
+        3. Releases tickets back to available pool
+        4. Updates raffle statistics
+        5. May reactivate raffle if it was completed due to all tickets sold
+        6. Sends refund email to customer
+      operationId: refundOrder
+      parameters:
+        - $ref: '#/components/parameters/associationId'
+        - name: orderId
+          in: path
+          required: true
+          description: The unique identifier of the order
+          schema:
+            type: integer
+            format: int64
+            minimum: 1
+          example: 789
+      responses:
+        '200':
+          description: Order refunded successfully
+          headers:
+            X-Rate-Limit-Remaining:
+              $ref: '#/components/headers/X-Rate-Limit-Remaining'
+            X-Rate-Limit-Reset:
+              $ref: '#/components/headers/X-Rate-Limit-Reset'
+            X-Rate-Limit-Limit:
+              $ref: '#/components/headers/X-Rate-Limit-Limit'
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessResponse'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/OrderResponse'
+        '400':
+          description: Bad Request - Invalid order status transition
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                success: false
+                message: "Unsupported status transition from PENDING to REFUNDED"
+                timestamp: "2024-01-15T10:30:00Z"
+                statusCode: 400
+                statusText: "Bad Request"
+                code: "BUSINESS_ERROR"
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /v1/associations/{associationId}/orders/{orderId}/unpaid:
+    put:
+      tags:
+        - Orders
+      summary: Mark order as unpaid
+      description: |
+        Marks a pending order as unpaid.
+        
+        **Authorization:**
+        - Only ADMIN and MEMBER users can mark orders as unpaid
+        
+        **Business Rules:**
+        - Order must be in PENDING status
+        - Raffle must be in COMPLETED status
+        - Releases all reserved tickets
+        - Updates raffle statistics
+        - Sends unpaid notification email
+        
+        **Side Effects:**
+        1. Updates order status to UNPAID
+        2. Sets unpaid timestamp
+        3. Releases tickets back to available pool
+        4. Updates raffle statistics
+        5. Sends unpaid notification email to customer
+      operationId: setOrderUnpaid
+      parameters:
+        - $ref: '#/components/parameters/associationId'
+        - name: orderId
+          in: path
+          required: true
+          description: The unique identifier of the order
+          schema:
+            type: integer
+            format: int64
+            minimum: 1
+          example: 789
+      responses:
+        '200':
+          description: Order marked as unpaid successfully
+          headers:
+            X-Rate-Limit-Remaining:
+              $ref: '#/components/headers/X-Rate-Limit-Remaining'
+            X-Rate-Limit-Reset:
+              $ref: '#/components/headers/X-Rate-Limit-Reset'
+            X-Rate-Limit-Limit:
+              $ref: '#/components/headers/X-Rate-Limit-Limit'
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessResponse'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/OrderResponse'
+        '400':
+          description: Bad Request - Invalid order status transition or raffle status
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                invalidOrderStatus:
+                  value:
+                    success: false
+                    message: "Unsupported status transition from COMPLETED to UNPAID"
+                    timestamp: "2024-01-15T10:30:00Z"
+                    statusCode: 400
+                    statusText: "Bad Request"
+                    code: "BUSINESS_ERROR"
+                invalidRaffleStatus:
+                  value:
+                    success: false
+                    message: "Cannot transition order from PENDING to UNPAID when raffle status is ACTIVE, expected COMPLETED"
+                    timestamp: "2024-01-15T10:30:00Z"
+                    statusCode: 400
+                    statusText: "Bad Request"
+                    code: "BUSINESS_ERROR"
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /v1/associations/{associationId}/orders/{orderId}/comment:
+    post:
+      tags:
+        - Orders
+      summary: Add comment to order
+      description: |
+        Adds a comment to an order. An order can only have one comment at a time.
+      operationId: addOrderComment
+      parameters:
+        - $ref: '#/components/parameters/associationId'
+        - name: orderId
+          in: path
+          required: true
+          description: The unique identifier of the order
+          schema:
+            type: integer
+            format: int64
+            minimum: 1
+          example: 789
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CommentRequest'
+      responses:
+        '200':
+          description: Comment added successfully
+          headers:
+            X-Rate-Limit-Remaining:
+              $ref: '#/components/headers/X-Rate-Limit-Remaining'
+            X-Rate-Limit-Reset:
+              $ref: '#/components/headers/X-Rate-Limit-Reset'
+            X-Rate-Limit-Limit:
+              $ref: '#/components/headers/X-Rate-Limit-Limit'
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessResponse'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/OrderResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+    put:
+      tags:
+        - Orders
+      summary: Edit order comment
+      description: |
+        Updates the existing comment on an order.
+      operationId: editOrderComment
+      parameters:
+        - $ref: '#/components/parameters/associationId'
+        - name: orderId
+          in: path
+          required: true
+          description: The unique identifier of the order
+          schema:
+            type: integer
+            format: int64
+            minimum: 1
+          example: 789
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CommentRequest'
+      responses:
+        '200':
+          description: Comment updated successfully
+          headers:
+            X-Rate-Limit-Remaining:
+              $ref: '#/components/headers/X-Rate-Limit-Remaining'
+            X-Rate-Limit-Reset:
+              $ref: '#/components/headers/X-Rate-Limit-Reset'
+            X-Rate-Limit-Limit:
+              $ref: '#/components/headers/X-Rate-Limit-Limit'
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessResponse'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/OrderResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+    delete:
+      tags:
+        - Orders
+      summary: Remove order comment
+      description: |
+        Removes the comment from an order.
+      operationId: removeOrderComment
+      parameters:
+        - $ref: '#/components/parameters/associationId'
+        - name: orderId
+          in: path
+          required: true
+          description: The unique identifier of the order
+          schema:
+            type: integer
+            format: int64
+            minimum: 1
+          example: 789
+      responses:
+        '204':
+          description: Comment removed successfully
+          headers:
+            X-Rate-Limit-Remaining:
+              $ref: '#/components/headers/X-Rate-Limit-Remaining'
+            X-Rate-Limit-Reset:
+              $ref: '#/components/headers/X-Rate-Limit-Reset'
+            X-Rate-Limit-Limit:
+              $ref: '#/components/headers/X-Rate-Limit-Limit'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  # Add new schemas
+  components:
+    schemas:
+      OrderComplete:
+        type: object
+        required:
+          - paymentMethod
+        properties:
+          paymentMethod:
+            type: string
+            enum:
+              - CASH
+              - CARD
+              - TRANSFER
+              - OTHER
+            description: The payment method used for the order
+            example: "CARD"
+
+      CommentRequest:
+        type: object
+        required:
+          - comment
+        properties:
+          comment:
+            type: string
+            maxLength: 500
+            description: The comment text
+            example: "Customer requested special handling"
+
+      CreateUserRequest:
+        type: object
+        required:
+          - userData
+          - role
+        properties:
+          userData:
+            $ref: '#/components/schemas/UserRegisterDTO'
+          role:
+            $ref: '#/components/schemas/AssociationRole'
+
+      EditUserRequest:
+        type: object
+        required:
+          - userData
+        properties:
+          userData:
+            $ref: '#/components/schemas/UserBaseDTO'
+
+      UpdateEmailRequest:
+        type: object
+        required:
+          - email
+        properties:
+          email:
+            type: string
+            format: email
+            description: New email address
+            example: "new.email@example.com"
+
+      VerifyEmailUpdateRequest:
+        type: object
+        required:
+          - token
+        properties:
+          token:
+            type: string
+            description: Email update verification token
+            example: "550e8400-e29b-41d4-a716-446655440000"
+
+      UpdatePhoneNumberRequest:
+        type: object
+        required:
+          - phoneNumber
+        properties:
+          phoneNumber:
+            $ref: '#/components/schemas/PhoneNumberDTO'
+
+      UpdateUserRoleRequest:
+        type: object
+        required:
+          - role
+        properties:
+          role:
+            $ref: '#/components/schemas/AssociationRole'
+
+      UserResponse:
+        type: object
+        required:
+          - id
+          - firstName
+          - lastName
+          - userName
+          - email
+          - role
+          - enabled
+          - createdAt
+        properties:
+          id:
+            type: integer
+            format: int64
+            description: The unique identifier of the user
+            example: 123
+          firstName:
+            type: string
+            description: User's first name
+            example: "John"
+          lastName:
+            type: string
+            description: User's last name
+            example: "Doe"
+          userName:
+            type: string
+            description: User's username
+            example: "johndoe"
+          email:
+            type: string
+            format: email
+            description: User's email address
+            example: "john.doe@example.com"
+          phoneNumber:
+            $ref: '#/components/schemas/PhoneNumberDTO'
+          role:
+            $ref: '#/components/schemas/AssociationRole'
+          enabled:
+            type: boolean
+            description: Whether the user account is enabled
+            example: true
+          createdAt:
+            type: string
+            format: date-time
+            description: When the user account was created
+            example: "2024-01-15T10:30:00Z"
+
+      TokenRefreshResponse:
+        type: object
+        required:
+          - accessToken
+        properties:
+          accessToken:
+            type: string
+            description: New JWT access token
+            example: "eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxMjMiLCJpYXQiOjE2MDk0NTkyMDB9..."
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: JWT access token for API authentication
+
+  parameters:
+    associationId:
+      name: associationId
+      in: path
+      required: true
+      description: The unique identifier of the association for multi-tenant resource access
+      schema:
+        type: integer
+        format: int64
+        minimum: 1
+      example: 123
+
+    pageParam:
+      name: page
+      in: query
+      required: false
+      description: Zero-based page number for pagination
+      schema:
+        type: integer
+        minimum: 0
+        default: 0
+      example: 0
+
+    sizeParam:
+      name: size
+      in: query
+      required: false
+      description: Number of items per page
+      schema:
+        type: integer
+        minimum: 1
+        maximum: 100
+        default: 20
+      example: 20
+
+    sortParam:
+      name: sort
+      in: query
+      required: false
+      description: |
+        Sorting criteria in the format: property,direction. 
+        Direction can be 'asc' or 'desc'. 
+        Multiple sort parameters are supported.
+      schema:
+        type: array
+        items:
+          type: string
+      style: form
+      explode: true
+      examples:
+        singleSort:
+          value: ["createdAt,desc"]
+          description: Sort by creation date descending
+        multipleSort:
+          value: ["status,asc", "createdAt,desc"]
+          description: Sort by status ascending, then by creation date descending
+
+  headers:
+    X-Rate-Limit-Remaining:
+      description: Number of requests remaining in current rate limit window
+      schema:
+        type: integer
+    X-Rate-Limit-Reset:
+      description: Time when rate limit window resets (Unix timestamp)
+      schema:
+        type: integer
+    X-Rate-Limit-Limit:
+      description: Total number of requests allowed in rate limit window
+      schema:
+        type: integer
+
+  schemas:
+    # Base Response Schemas
+    ApiResponse:
+      type: object
+      discriminator:
+        propertyName: success
+        mapping:
+          true: '#/components/schemas/SuccessResponse'
+          false: '#/components/schemas/ErrorResponse'
+      required:
+        - success
+        - message
+        - timestamp
+      properties:
+        success:
+          type: boolean
+          description: Indicates whether the request was successful
+        message:
+          type: string
+          description: Human-readable message describing the result
+        timestamp:
+          type: string
+          format: date-time
+          description: ISO 8601 timestamp of when the response was generated
+      example:
+        success: true
+        message: "Operation completed successfully"
+        timestamp: "2024-01-15T10:30:00Z"
+
+    SuccessResponse:
+      allOf:
+        - $ref: '#/components/schemas/ApiResponse'
+        - type: object
+          properties:
+            success:
+              type: boolean
+              enum: [true]
+            data:
+              description: The response payload containing the requested data
+              oneOf:
+                - type: object
+                - type: array
+                - type: string
+                - type: number
+                - type: boolean
+                - type: "null"
+      example:
+        success: true
+        message: "Data retrieved successfully"
+        timestamp: "2024-01-15T10:30:00Z"
+        data:
+          id: 123
+          name: "Example"
+
+    ErrorResponse:
+      allOf:
+        - $ref: '#/components/schemas/ApiResponse'
+        - type: object
+          required:
+            - statusCode
+            - statusText
+            - code
+          properties:
+            success:
+              type: boolean
+              enum: [false]
+            statusCode:
+              type: integer
+              description: HTTP status code
+              minimum: 400
+              maximum: 599
+            statusText:
+              type: string
+              description: HTTP status text
+            code:
+              type: string
+              description: Application-specific error code for programmatic handling
+              enum:
+                - NOT_FOUND
+                - BAD_REQUEST
+                - UNAUTHORIZED
+                - ACCESS_DENIED
+                - CONFLICT
+                - FILE_STORAGE_ERROR
+                - USER_NOT_FOUND
+                - EMAIL_VERIFICATION_FAILED
+                - PASSWORD_RESET_FAILED
+                - MAIL_ERROR
+                - INVALID_REQUEST
+                - MISSING_PARAMETER
+                - BUSINESS_ERROR
+                - UNEXPECTED_ERROR
+                - VALIDATION_ERROR
+                - VALUE_ALREADY_EXISTS
+                - RATE_LIMIT_EXCEEDED
+                - IMAGE_LIMIT_EXCEEDED
+                - EMAIL_SAME_AS_CURRENT
+                - EMAIL_UPDATE_TOKEN_EXPIRED
+                - EMAIL_UPDATE_TOKEN_INVALID
+                - EMAIL_NO_LONGER_AVAILABLE
+                - CURRENT_PASSWORD_INCORRECT
+                - PASSWORD_SAME_AS_CURRENT
+                - ROLE_UPDATE_SELF_DENIED
+                - ROLE_UPDATE_ADMIN_DENIED
+                - ADMIN_DISABLE_SELF_DENIED
+                - ADMIN_CREATE_ADMIN_DENIED
+                - INSUFFICIENT_TICKETS_AVAILABLE
+      example:
+        success: false
+        message: "Resource not found"
+        timestamp: "2024-01-15T10:30:00Z"
+        statusCode: 404
+        statusText: "Not Found"
+        code: "NOT_FOUND"
+
+    ValidationErrorResponse:
+      allOf:
+        - $ref: '#/components/schemas/ErrorResponse'
+        - type: object
+          required:
+            - errors
+          properties:
+            code:
+              type: string
+              enum: [VALIDATION_ERROR]
+            errors:
+              type: object
+              additionalProperties:
+                type: string
+              description: Field-specific validation errors mapped by field name
+      example:
+        success: false
+        message: "Validation failed"
+        timestamp: "2024-01-15T10:30:00Z"
+        statusCode: 400
+        statusText: "Bad Request"
+        code: "VALIDATION_ERROR"
+        errors:
+          email: "INVALID_FORMAT"
+          phoneNumber: "REQUIRED"
+
+    # Pagination Schema
+    PageResponse:
+      type: object
+      required:
+        - content
+        - totalElements
+        - totalPages
+        - size
+        - number
+        - first
+        - last
+        - numberOfElements
+      properties:
+        content:
+          type: array
+          items: {}
+          description: Array of items for the current page
+        totalElements:
+          type: integer
+          format: int64
+          description: Total number of elements across all pages
+        totalPages:
+          type: integer
+          description: Total number of pages
+        size:
+          type: integer
+          description: Number of items per page
+        number:
+          type: integer
+          description: Current page number (zero-based)
+        first:
+          type: boolean
+          description: Whether this is the first page
+        last:
+          type: boolean
+          description: Whether this is the last page
+        numberOfElements:
+          type: integer
+          description: Number of elements in the current page
+        empty:
+          type: boolean
+          description: Whether the page is empty
+      example:
+        content: []
+        totalElements: 150
+        totalPages: 8
+        size: 20
+        number: 0
+        first: true
+        last: false
+        numberOfElements: 20
+        empty: false
+
+    # Common Enums
+    AssociationRole:
+      type: string
+      enum:
+        - ADMIN
+        - MEMBER
+        - COLLABORATOR
+      description: |
+        User role within an association:
+        - **ADMIN**: Full administrative access, can manage users and all resources
+        - **MEMBER**: Can manage raffles, tickets, and orders
+        - **COLLABORATOR**: Limited access to view resources
+
+    # Authentication Schemas
+    PhoneNumberDTO:
+      type: object
+      required:
+        - prefix
+        - nationalNumber
+      properties:
+        prefix:
+          type: string
+          pattern: '^\\+\\d{1,3}'
+          description: International phone number prefix (e.g., +1, +34, +44)
+          example: "+1"
+        nationalNumber:
+          type: string
+          pattern: '^\\d{1,14}$'
+          description: National phone number without the international prefix
+          example: "234567890"
+      example:
+        prefix: "+1"
+        nationalNumber: "234567890"
+
+    UserRegisterDTO:
+      type: object
+      required:
+        - firstName
+        - lastName
+        - userName
+        - email
+        - phoneNumber
+        - password
+        - confirmPassword
+      properties:
+        firstName:
+          type: string
+          minLength: 2
+          maxLength: 50
+          description: User's first name
+          example: "John"
+        lastName:
+          type: string
+          minLength: 2
+          maxLength: 50
+          description: User's last name
+          example: "Doe"
+        userName:
+          type: string
+          minLength: 2
+          maxLength: 25
+          description: Unique username for the user
+          example: "johndoe"
+        email:
+          type: string
+          format: email
+          description: User's email address (used for login and notifications)
+          example: "john.doe@animalrescue.org"
+        phoneNumber:
+          $ref: '#/components/schemas/PhoneNumberDTO'
+        password:
+          type: string
+          pattern: '^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[!@#$%-^&_*(),.?":{}|<>]).{8,32}$'
+          description: |
+            Password must meet the following requirements:
+            - 8-32 characters long
+            - At least one lowercase letter
+            - At least one uppercase letter  
+            - At least one digit
+            - At least one special character (!@#$%-^&_*(),.?":{}|<>)
+          example: "SecurePass#123"
+        confirmPassword:
+          type: string
+          description: Password confirmation (must match password)
+          example: "SecurePass#123"
+
+    RegisterAddressData:
+      type: object
+      required:
+        - placeId
+        - latitude
+        - longitude
+        - city
+        - formattedAddress
+      properties:
+        placeId:
+          type: string
+          description: Google Places API place identifier
+          example: "ChIJN1t_tDeuEmsRUsoyG83frY4"
+        latitude:
+          type: number
+          format: double
+          minimum: -90.0
+          maximum: 90.0
+          description: Geographic latitude coordinate
+          example: 40.7128
+        longitude:
+          type: number
+          format: double
+          minimum: -180.0
+          maximum: 180.0
+          description: Geographic longitude coordinate
+          example: -74.0060
+        city:
+          type: string
+          minLength: 2
+          maxLength: 100
+          description: City name
+          example: "New York"
+        province:
+          type: string
+          minLength: 2
+          maxLength: 100
+          description: Province or state name
+          example: "NY"
+        zipCode:
+          type: string
+          pattern: '^$|^[0-9]{5}(?:-[0-9]{4})?$'
+          description: ZIP/postal code (US format)
+          example: "10001"
+        formattedAddress:
+          type: string
+          minLength: 5
+          maxLength: 255
+          description: Complete formatted address
+          example: "123 Main St, New York, NY 10001, USA"
+
+    RegisterAssociationData:
+      type: object
+      required:
+        - associationName
+        - addressData
+      properties:
+        associationName:
+          type: string
+          minLength: 2
+          maxLength: 100
+          description: Name of the animal rescue association
+          example: "Happy Paws Animal Rescue"
+        description:
+          type: string
+          maxLength: 500
+          description: Brief description of the association's mission
+          example: "Dedicated to rescuing and rehabilitating abandoned animals in our community"
+        email:
+          type: string
+          format: email
+          description: Association's contact email address
+          example: "contact@happypaws.org"
+        phoneNumber:
+          $ref: '#/components/schemas/PhoneNumberDTO'
+        addressData:
+          $ref: '#/components/schemas/RegisterAddressData'
+
+    RegisterRequest:
+      type: object
+      required:
+        - userData
+        - associationData
+      properties:
+        userData:
+          $ref: '#/components/schemas/UserRegisterDTO'
+        associationData:
+          $ref: '#/components/schemas/RegisterAssociationData'
+      example:
+        userData:
+          firstName: "John"
+          lastName: "Doe"
+          userName: "johndoe"
+          email: "john.doe@animalrescue.org"
+          phoneNumber:
+            prefix: "+1"
+            nationalNumber: "234567890"
+          password: "SecurePass#123"
+          confirmPassword: "SecurePass#123"
+        associationData:
+          associationName: "Happy Paws Animal Rescue"
+          description: "Dedicated to rescuing and rehabilitating abandoned animals"
+          email: "contact@happypaws.org"
+          phoneNumber:
+            prefix: "+1"
+            nationalNumber: "555123456"
+          addressData:
+            placeId: "ChIJN1t_tDeuEmsRUsoyG83frY4"
+            latitude: 40.7128
+            longitude: -74.0060
+            city: "New York"
+            province: "NY"
+            zipCode: "10001"
+            formattedAddress: "123 Main St, New York, NY 10001, USA"
+
+    RegisterResponse:
+      type: object
+      required:
+        - id
+        - email
+      properties:
+        id:
+          type: integer
+          format: int64
+          description: The unique identifier of the created user
+          example: 123
+        email:
+          type: string
+          format: email
+          description: The email address of the created user
+          example: "john.doe@animalrescue.org"
+
+    LoginRequest:
+      type: object
+      required:
+        - identifier
+        - password
+      properties:
+        identifier:
+          type: string
+          description: User's email address or username
+          example: "john.doe@animalrescue.org"
+        password:
+          type: string
+          description: User's password
+          example: "SecurePass#123"
+
+    AuthResponse:
+      type: object
+      required:
+        - accessToken
+        - associationId
+        - userId
+      properties:
+        accessToken:
+          type: string
+          description: JWT access token for API authentication
+          example: "eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxMjMiLCJpYXQiOjE2MDk0NTkyMDB9.signature"
+        associationId:
+          type: integer
+          format: int64
+          description: The unique identifier of the user's association
+          example: 456
+        userId:
+          type: integer
+          format: int64
+          description: The unique identifier of the authenticated user
+          example: 123
+
+    EmailVerificationRequest:
+      type: object
+      required:
+        - verificationToken
+      properties:
+        verificationToken:
+          type: string
+          description: Email verification token received via email
+          example: "550e8400-e29b-41d4-a716-446655440000"
+
+    ForgotPasswordRequest:
+      type: object
+      required:
+        - email
+      properties:
+        email:
+          type: string
+          format: email
+          description: Email address of the account to reset password for
+          example: "john.doe@animalrescue.org"
+
+    ResetPasswordRequest:
+      type: object
+      required:
+        - token
+        - password
+        - confirmPassword
+      properties:
+        token:
+          type: string
+          description: Password reset token received via email
+          example: "550e8400-e29b-41d4-a716-446655440000"
+        password:
+          type: string
+          pattern: '^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[!@#$%-^&_*(),.?":{}|<>]).{8,32}$'
+          description: |
+            New password must meet the following requirements:
+            - 8-32 characters long
+            - At least one lowercase letter
+            - At least one uppercase letter  
+            - At least one digit
+            - At least one special character (!@#$%-^&_*(),.?":{}|<>)
+          example: "NewSecurePass#456"
+        confirmPassword:
+          type: string
+          description: Password confirmation (must match password)
+          example: "NewSecurePass#456"
+
+    ImageUploadRequest:
+      type: object
+      required:
+        - files
+      properties:
+        files:
+          type: array
+          items:
+            type: string
+            format: binary
+          minItems: 1
+          maxItems: 10
+          description: |
+            Array of image files to upload.
+            
+            **File Requirements:**
+            - Supported formats: JPEG, PNG, WebP
+            - Maximum file size: 25MB per file
+            - Maximum total request size: 100MB
+            - Minimum 1 file, maximum 10 files per upload
+      example:
+        files: ["(binary image data)", "(binary image data)"]
+
+    ImageResponse:
+      type: object
+      required:
+        - images
+      properties:
+        images:
+          type: array
+          items:
+            $ref: '#/components/schemas/ImageDTO'
+          description: List of uploaded images with their metadata
+      example:
+        images:
+          - id: 123
+            fileName: "rescue-dog.jpg"
+            filePath: "/images/associations/456/temp/123.jpg"
+            contentType: "image/jpeg"
+            url: "https://api.raffleease.es/v1/public/associations/456/images/123"
+            imageOrder: 0
+
+    UserImagesResponse:
+      type: object
+      required:
+        - images
+      properties:
+        images:
+          type: array
+          items:
+            $ref: '#/components/schemas/ImageDTO'
+          description: List of user's images with their metadata
+      example:
+        images:
+          - id: 123
+            fileName: "rescue-dog.jpg"
+            filePath: "/images/associations/456/temp/123.jpg"
+            contentType: "image/jpeg"
+            url: "https://api.raffleease.es/v1/public/associations/456/images/123"
+            imageOrder: 0
+
+    ImageDTO:
+      type: object
+      required:
+        - id
+        - fileName
+        - filePath
+        - contentType
+        - url
+        - imageOrder
+      properties:
+        id:
+          type: integer
+          format: int64
+          description: The unique identifier of the image
+          example: 123
+        fileName:
+          type: string
+          minLength: 1
+          description: The original name of the uploaded image file
+          example: "rescue-dog.jpg"
+        filePath:
+          type: string
+          minLength: 1
+          description: The server path where the image file is stored
+          example: "/images/associations/456/temp/123.jpg"
+        contentType:
+          type: string
+          enum:
+            - image/jpeg
+            - image/png
+            - image/webp
+          description: The MIME type of the image file
+          example: "image/jpeg"
+        url:
+          type: string
+          format: uri
+          description: The public URL to access the image file
+          example: "https://api.raffleease.es/v1/public/associations/456/images/123"
+        imageOrder:
+          type: integer
+          minimum: 0
+          maximum: 10
+          description: |
+            The display order of the image within its collection.
+            Lower values appear first. Range: 0-10
+          example: 0
+
+    RaffleCreateRequest:
+      type: object
+      required:
+        - title
+        - description
+        - endDate
+        - images
+        - ticketsInfo
+      properties:
+        title:
+          type: string
+          minLength: 1
+          maxLength: 100
+          description: The title of the raffle
+          example: "Help Rescue Dogs Find Homes"
+        description:
+          type: string
+          minLength: 1
+          maxLength: 5000
+          description: The description of the raffle
+          example: "Help us raise funds to provide shelter and care for rescued dogs in our community. Every ticket sold helps provide food, medical care, and shelter for animals in need."
+        startDate:
+          type: string
+          format: date-time
+          description: |
+            The start date of the raffle (must be in the future).
+            If not provided, will be set when raffle status changes to ACTIVE.
+          example: "2024-01-20T09:00:00Z"
+        endDate:
+          type: string
+          format: date-time
+          description: The end date of the raffle (must be in the future and after start date)
+          example: "2024-02-15T18:00:00Z"
+        images:
+          type: array
+          items:
+            $ref: '#/components/schemas/ImageDTO'
+          minItems: 1
+          maxItems: 10
+          description: Array of images for the raffle (uses pending images uploaded by the user)
+        ticketsInfo:
+          $ref: '#/components/schemas/TicketsCreateInfo'
+
+    RaffleEditRequest:
+      type: object
+      description: |
+        Partial update request for raffle. All fields are optional.
+        Only provided fields will be updated.
+      properties:
+        title:
+          type: string
+          maxLength: 100
+          description: The title of the raffle
+          example: "Updated: Help Rescue Dogs Find Homes"
+        description:
+          type: string
+          maxLength: 5000
+          description: The description of the raffle
+          example: "Help us raise funds to provide shelter and care for rescued dogs."
+        endDate:
+          type: string
+          format: date-time
+          description: The end date of the raffle (must be in the future)
+          example: "2024-02-20T18:00:00Z"
+        images:
+          type: array
+          items:
+            $ref: '#/components/schemas/ImageDTO'
+          minItems: 1
+          maxItems: 10
+          description: Array of images for the raffle (replaces all existing images)
+        ticketPrice:
+          type: number
+          format: double
+          minimum: 0.01
+          description: The price of each ticket (must be positive)
+          example: 7.50
+        totalTickets:
+          type: integer
+          format: int64
+          minimum: 1
+          description: The total number of tickets available (cannot be less than already sold tickets)
+          example: 1500
+
+    TicketsCreateInfo:
+      type: object
+      required:
+        - amount
+        - price
+        - lowerLimit
+      properties:
+        amount:
+          type: integer
+          format: int64
+          minimum: 1
+          description: Total number of tickets to create for the raffle
+          example: 1000
+        price:
+          type: number
+          format: double
+          minimum: 0.01
+          description: Price per ticket
+          example: 5.00
+        lowerLimit:
+          type: integer
+          format: int64
+          minimum: 0
+          description: Minimum number of tickets that must be sold (lower bound for raffle viability)
+          example: 250
+
+    RaffleResponse:
+      type: object
+      required:
+        - id
+        - associationId
+        - title
+        - description
+        - status
+        - ticketPrice
+        - totalTickets
+        - firstTicketNumber
+        - images
+        - statistics
+        - createdAt
+        - updatedAt
+        - endDate
+      properties:
+        id:
+          type: integer
+          format: int64
+          description: The unique identifier of the raffle
+          example: 789
+        associationId:
+          type: integer
+          format: int64
+          description: The unique identifier of the association
+          example: 456
+        title:
+          type: string
+          description: The title of the raffle
+          example: "Help Rescue Dogs Find Homes"
+        description:
+          type: string
+          description: The description of the raffle
+          example: "Help us raise funds to provide shelter and care for rescued dogs."
+        status:
+          $ref: '#/components/schemas/RaffleStatus'
+        ticketPrice:
+          type: number
+          format: double
+          description: The price of each ticket
+          example: 5.00
+        totalTickets:
+          type: integer
+          format: int64
+          description: The total number of tickets available for the raffle
+          example: 1000
+        firstTicketNumber:
+          type: integer
+          format: int64
+          description: The first ticket number in the raffle sequence
+          example: 1
+        images:
+          type: array
+          items:
+            $ref: '#/components/schemas/ImageDTO'
+          description: Array of images associated with the raffle
+        completionReason:
+          $ref: '#/components/schemas/CompletionReason'
+        winningTicketId:
+          type: integer
+          format: int64
+          description: The ID of the winning ticket (if raffle is completed and has a winner)
+          example: 12345
+          nullable: true
+        statistics:
+          $ref: '#/components/schemas/RaffleStatistics'
+        createdAt:
+          type: string
+          format: date-time
+          description: When the raffle was created
+          example: "2024-01-15T10:30:00Z"
+        updatedAt:
+          type: string
+          format: date-time
+          description: When the raffle was last updated
+          example: "2024-01-15T11:45:00Z"
+        startDate:
+          type: string
+          format: date-time
+          description: When the raffle started (set when status changes to ACTIVE)
+          example: "2024-01-20T09:00:00Z"
+          nullable: true
+        endDate:
+          type: string
+          format: date-time
+          description: When the raffle ends
+          example: "2024-02-15T18:00:00Z"
+        completedAt:
+          type: string
+          format: date-time
+          description: When the raffle was completed (if applicable)
+          example: "2024-02-15T18:00:00Z"
+          nullable: true
+
+    RaffleStatus:
+      type: string
+      enum:
+        - PENDING
+        - ACTIVE
+        - PAUSED
+        - COMPLETED
+      description: |
+        The status of the raffle:
+        - **PENDING**: Raffle created but not yet started (initial state)
+        - **ACTIVE**: Raffle is running and accepting ticket purchases
+        - **PAUSED**: Raffle temporarily stopped (can be resumed)
+        - **COMPLETED**: Raffle finished (manually or automatically)
+
+    CompletionReason:
+      type: string
+      enum:
+        - ALL_TICKETS_SOLD
+        - END_DATE_REACHED
+        - MANUALLY_COMPLETED
+      description: |
+        The reason why the raffle was completed:
+        - **ALL_TICKETS_SOLD**: All available tickets were purchased
+        - **END_DATE_REACHED**: The raffle end date was reached
+        - **MANUALLY_COMPLETED**: Manually completed by an administrator
+      nullable: true
+
+    RaffleStatistics:
+      type: object
+      required:
+        - id
+        - raffleId
+        - availableTickets
+        - soldTickets
+        - revenue
+        - averageOrderValue
+        - totalOrders
+        - completedOrders
+        - pendingOrders
+        - cancelledOrders
+        - unpaidOrders
+        - refundedOrders
+        - participants
+        - ticketsPerParticipant
+        - dailySalesVelocity
+      properties:
+        id:
+          type: integer
+          format: int64
+          description: Unique identifier for the statistics record
+          example: 123
+        raffleId:
+          type: integer
+          format: int64
+          description: ID of the associated raffle
+          example: 789
+        availableTickets:
+          type: integer
+          format: int64
+          description: Number of tickets still available for purchase
+          example: 750
+        soldTickets:
+          type: integer
+          format: int64
+          description: Number of tickets that have been sold
+          example: 250
+        revenue:
+          type: number
+          format: double
+          description: Total revenue generated from ticket sales
+          example: 1250.00
+        averageOrderValue:
+          type: number
+          format: double
+          description: Average value per order
+          example: 25.50
+        totalOrders:
+          type: integer
+          format: int64
+          description: Total number of orders placed
+          example: 49
+        completedOrders:
+          type: integer
+          format: int64
+          description: Number of completed orders
+          example: 45
+        pendingOrders:
+          type: integer
+          format: int64
+          description: Number of pending orders
+          example: 2
+        cancelledOrders:
+          type: integer
+          format: int64
+          description: Number of cancelled orders
+          example: 1
+        unpaidOrders:
+          type: integer
+          format: int64
+          description: Number of unpaid orders
+          example: 1
+        refundedOrders:
+          type: integer
+          format: int64
+          description: Number of refunded orders
+          example: 0
+        participants:
+          type: integer
+          format: int64
+          description: Number of unique participants
+          example: 180
+        ticketsPerParticipant:
+          type: number
+          format: double
+          description: Average number of tickets per participant
+          example: 1.39
+        firstSaleDate:
+          type: string
+          format: date-time
+          description: Date of the first ticket sale
+          example: "2024-01-20T10:15:00Z"
+          nullable: true
+        lastSaleDate:
+          type: string
+          format: date-time
+          description: Date of the most recent ticket sale
+          example: "2024-01-22T16:30:00Z"
+          nullable: true
+        dailySalesVelocity:
+          type: number
+          format: double
+          description: Average tickets sold per day
+          example: 125.5
+
+    StatusUpdateRequest:
+      type: object
+      required:
+        - status
+      properties:
+        status:
+          $ref: '#/components/schemas/RaffleStatus'
+      example:
+        status: "ACTIVE"
+
+    CartResponse:
+      type: object
+      required:
+        - id
+        - userId
+        - tickets
+        - status
+        - createdAt
+        - updatedAt
+      properties:
+        id:
+          type: integer
+          format: int64
+          description: The unique identifier of the cart
+          example: 123
+        userId:
+          type: integer
+          format: int64
+          description: The unique identifier of the user who owns the cart
+          example: 456
+        tickets:
+          type: array
+          items:
+            $ref: '#/components/schemas/TicketResponse'
+          description: List of tickets in the cart
+        status:
+          type: string
+          enum:
+            - ACTIVE
+            - EXPIRED
+            - CLOSED
+          description: The status of the cart
+        createdAt:
+          type: string
+          format: date-time
+          description: When the cart was created
+          example: "2024-01-15T10:30:00Z"
+        updatedAt:
+          type: string
+          format: date-time
+          description: When the cart was last updated
+          example: "2024-01-15T11:45:00Z"
+
+    TicketResponse:
+      type: object
+      required:
+        - id
+        - ticketNumber
+        - status
+        - raffleId
+        - customerId
+        - price
+        - createdAt
+        - updatedAt
+      properties:
+        id:
+          type: integer
+          format: int64
+          description: The unique identifier of the ticket
+          example: 789
+        ticketNumber:
+          type: string
+          description: The ticket number
+          example: "R1001"
+        status:
+          type: string
+          enum:
+            - AVAILABLE
+            - RESERVED
+            - SOLD
+          description: The status of the ticket
+        raffleId:
+          type: integer
+          format: int64
+          description: The unique identifier of the raffle
+          example: 101
+        customerId:
+          type: integer
+          format: int64
+          description: The unique identifier of the customer
+          example: 789
+        price:
+          type: number
+          format: double
+          description: The price of the ticket
+          example: 5.00
+        createdAt:
+          type: string
+          format: date-time
+          description: When the ticket was created
+          example: "2024-01-15T10:30:00Z"
+        updatedAt:
+          type: string
+          format: date-time
+          description: When the ticket was last updated
+          example: "2024-01-15T11:45:00Z"
+
+    ReservationRequest:
+      type: object
+      required:
+        - ticketIds
+      properties:
+        ticketIds:
+          type: array
+          items:
+            type: integer
+            format: int64
+          minItems: 1
+          description: Array of ticket IDs to reserve or release
+          example: [789, 790, 791]
+
+    # Cart and Ticket Schemas
+    CartStatus:
+      type: string
+      enum:
+        - ACTIVE
+        - EXPIRED
+        - CLOSED
+      description: |
+        The status of a shopping cart:
+        - **ACTIVE**: Cart is in use and can accept ticket reservations
+        - **EXPIRED**: Cart has timed out and tickets were released
+        - **CLOSED**: Cart was completed (order created) or manually closed
+
+    TicketStatus:
+      type: string
+      enum:
+        - AVAILABLE
+        - RESERVED
+        - SOLD
+      description: |
+        The status of a ticket:
+        - **AVAILABLE**: Ticket can be purchased
+        - **RESERVED**: Ticket is temporarily held in a cart
+        - **SOLD**: Ticket has been purchased
+
+    CartResponse:
+      type: object
+      required:
+        - id
+        - userId
+        - tickets
+        - status
+        - createdAt
+        - updatedAt
+      properties:
+        id:
+          type: integer
+          format: int64
+          description: The unique identifier of the cart
+          example: 123
+        userId:
+          type: integer
+          format: int64
+          description: The ID of the user who owns the cart
+          example: 456
+        tickets:
+          type: array
+          items:
+            $ref: '#/components/schemas/TicketResponse'
+          description: Array of tickets currently in the cart
+        status:
+          $ref: '#/components/schemas/CartStatus'
+        createdAt:
+          type: string
+          format: date-time
+          description: When the cart was created
+          example: "2024-01-15T10:30:00Z"
+        updatedAt:
+          type: string
+          format: date-time
+          description: When the cart was last updated
+          example: "2024-01-15T10:30:00Z"
+
+    TicketResponse:
+      type: object
+      required:
+        - id
+        - ticketNumber
+        - status
+        - raffleId
+        - createdAt
+        - updatedAt
+      properties:
+        id:
+          type: integer
+          format: int64
+          description: The unique identifier of the ticket
+          example: 789
+        ticketNumber:
+          type: string
+          description: The unique ticket number within the raffle
+          example: "R1001"
+        status:
+          $ref: '#/components/schemas/TicketStatus'
+        raffleId:
+          type: integer
+          format: int64
+          description: The ID of the raffle this ticket belongs to
+          example: 101
+        customerId:
+          type: integer
+          format: int64
+          description: The ID of the customer who purchased the ticket (if sold)
+          example: 456
+          nullable: true
+        createdAt:
+          type: string
+          format: date-time
+          description: When the ticket was created
+          example: "2024-01-15T10:30:00Z"
+        updatedAt:
+          type: string
+          format: date-time
+          description: When the ticket was last updated
+          example: "2024-01-15T10:30:00Z"
+
+    ReservationRequest:
+      type: object
+      required:
+        - ticketIds
+      properties:
+        ticketIds:
+          type: array
+          items:
+            type: integer
+            format: int64
+          minItems: 1
+          description: Array of ticket IDs to reserve or release
+          example: [789, 790, 791]
+
+    OrderStatus:
+      type: string
+      enum:
+        - PENDING
+        - CANCELLED
+        - UNPAID
+        - REFUNDED
+        - COMPLETED
+      description: |
+        The status of an order:
+        - **PENDING**: Order created but payment not initiated
+        - **CANCELLED**: Order was cancelled before payment
+        - **UNPAID**: Payment was initiated but not completed
+        - **REFUNDED**: Order was refunded after payment
+        - **COMPLETED**: Order is fully paid and completed
+
+    OrderCreateRequest:
+      type: object
+      required:
+        - cartId
+        - raffleId
+        - ticketIds
+        - customer
+      properties:
+        cartId:
+          type: integer
+          format: int64
+          description: The ID of the active cart containing reserved tickets
+          example: 123
+        raffleId:
+          type: integer
+          format: int64
+          description: The ID of the raffle the tickets belong to
+          example: 101
+        ticketIds:
+          type: array
+          items:
+            type: integer
+            format: int64
+            minItems: 1
+            description: Array of ticket IDs to include in the order
+            example: [789, 790, 791]
+        customer:
+          $ref: '#/components/schemas/CustomerCreateRequest'
+        comment:
+          type: string
+          maxLength: 500
+          description: Optional comment for the order
+          example: "Gift for charity event"
+          nullable: true
+
+    CustomerCreateRequest:
+      type: object
+      required:
+        - fullName
+      properties:
+        fullName:
+          type: string
+          minLength: 1
+          description: Full name of the customer
+          example: "John Doe"
+        email:
+          type: string
+          format: email
+          description: Email address of the customer
+          example: "john.doe@example.com"
+          nullable: true
+        phoneNumber:
+          $ref: '#/components/schemas/PhoneNumberDTO'
+          description: Phone number of the customer
+          nullable: true
+
+    OrderResponse:
+      type: object
+      required:
+        - id
+        - orderReference
+        - status
+        - total
+        - tickets
+        - customer
+        - createdAt
+      properties:
+        id:
+          type: integer
+          format: int64
+          description: The unique identifier of the order
+          example: 789
+        orderReference:
+          type: string
+          description: Human-readable order reference number
+          example: "ORD-20240115-789"
+        status:
+          $ref: '#/components/schemas/OrderStatus'
+        total:
+          type: number
+          format: double
+          description: Total amount of the order
+          example: 25.00
+        tickets:
+          type: array
+          items:
+            $ref: '#/components/schemas/TicketResponse'
+          description: Array of tickets included in the order
+        customer:
+          $ref: '#/components/schemas/CustomerResponse'
+        comment:
+          type: string
+          description: Optional comment on the order
+          example: "Gift for charity event"
+          nullable: true
+        createdAt:
+          type: string
+          format: date-time
+          description: When the order was created
+          example: "2024-01-15T10:30:00Z"
+        completedAt:
+          type: string
+          format: date-time
+          description: When the order was completed (if applicable)
+          example: "2024-01-15T11:00:00Z"
+          nullable: true
+
+    CustomerResponse:
+      type: object
+      required:
+        - id
+        - fullName
+      properties:
+        id:
+          type: integer
+          format: int64
+          description: The unique identifier of the customer
+          example: 456
+        fullName:
+          type: string
+          description: Full name of the customer
+          example: "John Doe"
+        email:
+          type: string
+          format: email
+          description: Email address of the customer
+          example: "john.doe@example.com"
+          nullable: true
+        phoneNumber:
+          $ref: '#/components/schemas/PhoneNumberDTO'
+          description: Phone number of the customer
+          nullable: true
+
+  responses:
+    # Standard Error Responses
+    BadRequest:
+      description: Bad Request - The request was invalid or malformed
+      headers:
+        X-Rate-Limit-Remaining:
+          $ref: '#/components/headers/X-Rate-Limit-Remaining'
+        X-Rate-Limit-Reset:
+          $ref: '#/components/headers/X-Rate-Limit-Reset'
+        X-Rate-Limit-Limit:
+          $ref: '#/components/headers/X-Rate-Limit-Limit'
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            success: false
+            message: "Invalid request parameters"
+            timestamp: "2024-01-15T10:30:00Z"
+            statusCode: 400
+            statusText: "Bad Request"
+            code: "BAD_REQUEST"
+
+    Unauthorized:
+      description: Unauthorized - Authentication required or token invalid
+      headers:
+        X-Rate-Limit-Remaining:
+          $ref: '#/components/headers/X-Rate-Limit-Remaining'
+        X-Rate-Limit-Reset:
+          $ref: '#/components/headers/X-Rate-Limit-Reset'
+        X-Rate-Limit-Limit:
+          $ref: '#/components/headers/X-Rate-Limit-Limit'
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            success: false
+            message: "Authentication required"
+            timestamp: "2024-01-15T10:30:00Z"
+            statusCode: 401
+            statusText: "Unauthorized"
+            code: "UNAUTHORIZED"
+
+    Forbidden:
+      description: Forbidden - Insufficient permissions to access the resource
+      headers:
+        X-Rate-Limit-Remaining:
+          $ref: '#/components/headers/X-Rate-Limit-Remaining'
+        X-Rate-Limit-Reset:
+          $ref: '#/components/headers/X-Rate-Limit-Reset'
+        X-Rate-Limit-Limit:
+          $ref: '#/components/headers/X-Rate-Limit-Limit'
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            success: false
+            message: "Access denied - insufficient permissions"
+            timestamp: "2024-01-15T10:30:00Z"
+            statusCode: 403
+            statusText: "Forbidden"
+            code: "ACCESS_DENIED"
+
+    NotFound:
+      description: Not Found - The requested resource was not found
+      headers:
+        X-Rate-Limit-Remaining:
+          $ref: '#/components/headers/X-Rate-Limit-Remaining'
+        X-Rate-Limit-Reset:
+          $ref: '#/components/headers/X-Rate-Limit-Reset'
+        X-Rate-Limit-Limit:
+          $ref: '#/components/headers/X-Rate-Limit-Limit'
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            success: false
+            message: "Resource not found"
+            timestamp: "2024-01-15T10:30:00Z"
+            statusCode: 404
+            statusText: "Not Found"
+            code: "NOT_FOUND"
+
+    Conflict:
+      description: Conflict - Resource already exists or business rule violation
+      headers:
+        X-Rate-Limit-Remaining:
+          $ref: '#/components/headers/X-Rate-Limit-Remaining'
+        X-Rate-Limit-Reset:
+          $ref: '#/components/headers/X-Rate-Limit-Reset'
+        X-Rate-Limit-Limit:
+          $ref: '#/components/headers/X-Rate-Limit-Limit'
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            success: false
+            message: "Resource already exists"
+            timestamp: "2024-01-15T10:30:00Z"
+            statusCode: 409
+            statusText: "Conflict"
+            code: "CONFLICT"
+
+    ValidationError:
+      description: Unprocessable Entity - Validation failed
+      headers:
+        X-Rate-Limit-Remaining:
+          $ref: '#/components/headers/X-Rate-Limit-Remaining'
+        X-Rate-Limit-Reset:
+          $ref: '#/components/headers/X-Rate-Limit-Reset'
+        X-Rate-Limit-Limit:
+          $ref: '#/components/headers/X-Rate-Limit-Limit'
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ValidationErrorResponse'
+          example:
+            success: false
+            message: "Validation failed"
+            timestamp: "2024-01-15T10:30:00Z"
+            statusCode: 400
+            statusText: "Bad Request"
+            code: "VALIDATION_ERROR"
+            errors:
+              email: "INVALID_FORMAT"
+              phoneNumber: "REQUIRED"
+
+    TooManyRequests:
+      description: Too Many Requests - Rate limit exceeded
+      headers:
+        X-Rate-Limit-Remaining:
+          $ref: '#/components/headers/X-Rate-Limit-Remaining'
+        X-Rate-Limit-Reset:
+          $ref: '#/components/headers/X-Rate-Limit-Reset'
+        X-Rate-Limit-Limit:
+          $ref: '#/components/headers/X-Rate-Limit-Limit'
+        Retry-After:
+          description: Number of seconds to wait before retrying
+          schema:
+            type: integer
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            success: false
+            message: "Rate limit exceeded. Please try again later."
+            timestamp: "2024-01-15T10:30:00Z"
+            statusCode: 429
+            statusText: "Too Many Requests"
+            code: "RATE_LIMIT_EXCEEDED"
+
+    InternalServerError:
+      description: Internal Server Error - An unexpected error occurred
+      headers:
+        X-Rate-Limit-Remaining:
+          $ref: '#/components/headers/X-Rate-Limit-Remaining'
+        X-Rate-Limit-Reset:
+          $ref: '#/components/headers/X-Rate-Limit-Reset'
+        X-Rate-Limit-Limit:
+          $ref: '#/components/headers/X-Rate-Limit-Limit'
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            success: false
+            message: "An unexpected error occurred"
+            timestamp: "2024-01-15T10:30:00Z"
+            statusCode: 500
+            statusText: "Internal Server Error"
+            code: "UNEXPECTED_ERROR" 

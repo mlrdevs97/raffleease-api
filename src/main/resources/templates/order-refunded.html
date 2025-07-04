@@ -1,0 +1,94 @@
+<!DOCTYPE html>
+<html lang="en" xmlns:th="http://www.thymeleaf.org">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Order Refunded - Raffleease</title>
+</head>
+
+<body>
+    <div id="email-template"
+        style="font-family: Arial, sans-serif; line-height: 1.6; color: rgb(51, 51, 51); max-width: 600px; margin: 0px auto; background-color: rgb(255, 255, 255);">
+        <div style="background-color: rgb(59, 130, 246); padding: 40px 30px; text-align: center; position: relative;">
+            <h1
+                style="color: rgb(255, 255, 255); margin: 0px 0px 8px; font-size: 32px; font-weight: 700; letter-spacing: -0.5px;">
+                Refund Processed 💰</h1>
+            <p style="color: rgb(191, 219, 254); margin: 0px; font-size: 18px; font-weight: 400;">Your refund has
+                been successfully processed</p>
+        </div>
+        <div style="padding: 40px 30px;">
+            <p style="font-size: 18px; margin-bottom: 25px; color: rgb(51, 51, 51);">Hi <span
+                    th:text="${customerName}">[Customer Name]</span>,</p>
+            <p style="font-size: 16px; margin-bottom: 30px; color: rgb(85, 85, 85);">We're writing to confirm that
+                your refund for <strong th:text="${raffleName}">[Raffle Name]</strong> has been successfully processed.
+            </p>
+            <div
+                style="background-color: rgb(248, 250, 252); border: 2px solid rgb(226, 232, 240); border-radius: 12px; padding: 25px; margin-bottom: 30px;">
+                <h2 style="color: rgb(59, 130, 246); font-size: 20px; font-weight: bold; margin: 0px 0px 20px;">
+                    Refund Details</h2>
+                <div style="margin-bottom: 15px;"><strong style="color: rgb(55, 65, 81);">Order
+                        Reference:</strong><span style="margin-left: 10px; color: rgb(107, 114, 128);"
+                        th:text="${orderReference}">[Order Reference]</span></div>
+                <div style="margin-bottom: 15px;"><strong style="color: rgb(55, 65, 81);">Raffle:</strong><span
+                        style="margin-left: 10px; color: rgb(107, 114, 128);" th:text="${raffleName}">[Raffle
+                        Name]</span>
+                </div>
+                <div style="margin-bottom: 15px;"><strong style="color: rgb(55, 65, 81);">Original Order
+                        Date:</strong><span style="margin-left: 10px; color: rgb(107, 114, 128);"
+                        th:text="${orderDate}">[Original Order Date]</span></div>
+                <div style="margin-bottom: 15px;"><strong style="color: rgb(55, 65, 81);">Refund Date:</strong><span
+                        style="margin-left: 10px; color: rgb(107, 114, 128);" th:text="${refundedDate}">[Refund
+                        Date]</span></div>
+                <div style="margin-bottom: 15px;"><strong style="color: rgb(55, 65, 81);">Refund
+                        Amount:</strong><span
+                        style="margin-left: 10px; color: rgb(59, 130, 246); font-size: 18px; font-weight: bold;">$<span
+                            th:text="${paymentTotal}">[Refund Amount]</span></span>
+                </div>
+                <div><strong style="color: rgb(55, 65, 81);">Refund Method:</strong><span
+                        style="margin-left: 10px; color: rgb(107, 114, 128);" th:text="${paymentMethod}">[Refund
+                        Method]</span></div>
+            </div>
+            <div
+                style="background-color: rgb(236, 253, 245); border: 2px solid rgb(16, 185, 129);  border: 2px solid rgb(226, 232, 240); border-radius: 12px; padding: 25px; margin-bottom: 30px;">
+                <h3 style="color: rgb(6, 95, 70); font-size: 18px; font-weight: bold; margin: 0px 0px 15px;">
+                    Refunded Tickets</h3>
+                <div style="margin-bottom: 15px;"><strong style="color: rgb(4, 120, 87)">Ticket
+                        Numbers:</strong>
+                    <span th:each="ticket, iterStat : ${ticketList}"
+                        style="margin-left: 10px; color: rgb(4, 120, 87);">
+                        #<span th:text="${ticket}">[Ticket Number]</span><span th:if="${!iterStat.last}">, </span>
+                    </span>
+                </div>
+                <p style="font-size: 14px; color: rgb(220, 38, 38); margin: 0px;">These tickets have been removed
+                    from the raffle and are now available for other participants.</p>
+            </div>
+            <div
+                style="background-color: rgb(255, 251, 235); border: 2px solid rgb(245, 158, 11); border-radius: 12px; padding: 25px; margin-bottom: 30px;">
+                <h3 style="color: rgb(146, 64, 14); font-size: 18px; font-weight: bold; margin: 0px 0px 15px;">
+                    Important Notes</h3>
+                <ul style="color: rgb(146, 64, 14); padding-left: 20px; margin: 0px;">
+                    <li style="margin-bottom: 8px;">Keep this email as proof of your refund</li>
+                    <li>You're welcome to participate in future raffles</li>
+                </ul>
+            </div>
+            <div style="border-top: 2px solid rgb(229, 231, 235); padding-top: 25px; text-align: center;">
+                <p style="font-size: 14px; color: rgb(107, 114, 128); margin-bottom: 10px;">Questions about your
+                    refund? We're here to help!</p>
+                <p style="font-size: 14px; color: rgb(107, 114, 128); margin: 0px;">Contact us at <a
+                        th:href="'mailto:' + ${senderEmail}" th:text="${senderEmail}"
+                        style="color: rgb(59, 130, 246); text-decoration: none;">support@raffleease.com</a></p>
+            </div>
+        </div>
+        <div
+            style="background-color: rgb(249, 250, 251); padding: 25px 30px; border-top: 1px solid rgb(229, 231, 235); text-align: center;">
+            <p style="font-size: 12px; color: rgb(156, 163, 175); margin: 0px 0px 10px;">This email was sent from
+                <span th:text="${senderEmail}">support@raffleease.com</span>
+            </p>
+            <p style="font-size: 12px; color: rgb(156, 163, 175); margin: 0px;">© 2024 Raffleease. All rights
+                reserved.</p>
+        </div>
+    </div>
+</body>
+
+</html>

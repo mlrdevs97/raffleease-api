@@ -1,0 +1,148 @@
+<!DOCTYPE html>
+<html lang="en" xmlns:th="http://www.thymeleaf.org">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Account Verification - Raffleease</title>
+    <style>
+        body {
+            font-family: 'Arial', sans-serif;
+            background-color: #f5f5f7;
+            margin: 0;
+            padding: 0;
+            color: #333;
+        }
+
+        .email-container {
+            max-width: 600px;
+            margin: 20px auto;
+            background: #ffffff;
+            border-radius: 8px;
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+            overflow: hidden;
+            border: 1px solid #ececec;
+        }
+
+        .header {
+            background-color: #3b82f6; /* Consistent blue branding */
+            color: #ffffff;
+            padding: 30px 20px;
+            text-align: center;
+        }
+
+        .header h1 {
+            margin: 0;
+            font-size: 24px;
+            font-weight: bold;
+        }
+
+        .content {
+            padding: 20px;
+        }
+
+        .content h2 {
+            font-size: 18px;
+            color: #3b82f6; /* Consistent blue branding */
+            margin-bottom: 10px;
+        }
+
+        .content p {
+            margin: 10px 0;
+            line-height: 1.6;
+        }
+
+        .verify-button {
+            display: inline-block;
+            background-color: #3b82f6; /* Consistent blue button */
+            color: #ffffff !important; /* Ensure text color is white */
+            padding: 12px 24px;
+            text-decoration: none;
+            border-radius: 6px;
+            font-weight: bold;
+            margin: 20px 0;
+            text-align: center;
+        }
+
+        .verify-button:hover {
+            background-color: #2563eb; /* Darker blue on hover */
+        }
+
+        .footer {
+            background-color: #f8f8fa;
+            color: #555;
+            text-align: center;
+            padding: 15px;
+            font-size: 14px;
+        }
+
+        .footer a {
+            color: #3b82f6; /* Consistent blue for footer links */
+            text-decoration: none;
+            font-weight: bold;
+        }
+
+        .info-box {
+            background-color: #f0f9ff;
+            border-left: 4px solid #3b82f6; /* Consistent blue border */
+            padding: 15px;
+            margin: 15px 0;
+            border-radius: 4px;
+        }
+
+        /* Styling for the important notice - keeping as is for distinct visual cue */
+        .important-notice {
+            margin-top: 20px;
+            padding: 15px;
+            background-color: #fef3cd;
+            border-left: 4px solid #ffc107;
+            border-radius: 4px;
+            color: #8a6d3b; /* Adjusted text color for readability */
+        }
+
+        .important-notice strong {
+            color: #8a6d3b; /* Consistent text color for strong tag in notice */
+        }
+    </style>
+</head>
+<body>
+<div class="email-container">
+    <div class="header">
+        <h1>Welcome, <span th:text="${customerName}">[User Name]</span>!</h1>
+    </div>
+    <div class="content">
+        <h2>Your Raffle Ease Account Has Been Created</h2>
+        <p>An administrator has created an account for you on <strong><span th:text="${creationDate}">[Creation Date]</span></strong>.</p>
+
+        <div class="info-box">
+            <p><strong>Account Details:</strong></p>
+            <p>Username: <span th:text="${customerUsername}">[Username]</span></p>
+            <p>Email: <span th:text="${customerEmail}">[Email]</span></p>
+            <p>Association: <span th:text="${associationName}">[Association Name]</span></p>
+        </div>
+
+        <p>To activate your account and complete the setup, please verify your email address by clicking the button below:</p>
+
+        <div style="text-align: center;">
+            <a th:href="${verificationUrl}" class="verify-button" title="Verify your account">
+                Verify My Account
+            </a>
+        </div>
+
+        <p style="margin-top: 20px; font-size: 12px; color: #777;">
+            If the button above doesn't work, copy and paste the following link into your browser:<br>
+            <span th:text="${verificationUrl}" style="word-break: break-all;">[Verification URL]</span>
+        </p>
+
+        <p class="important-notice">
+            <strong>Important:</strong> After verifying your email, you'll need to set up your password. Please contact your administrator if you need assistance.
+        </p>
+    </div>
+    <div class="footer">
+        <p>If you have any questions, please contact us at
+            <a th:href="'mailto:' + ${senderEmail}" th:text="${senderEmail}">support@raffleease.com</a>.
+        </p>
+        <p>© 2024 Raffle Ease.</p>
+    </div>
+</div>
+</body>
+</html>
