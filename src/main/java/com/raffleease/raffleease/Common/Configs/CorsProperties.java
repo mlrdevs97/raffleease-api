@@ -9,7 +9,7 @@ import java.util.List;
 
 @Component
 @Setter
-@ConfigurationProperties(prefix = "spring.application.hosts")
+@ConfigurationProperties(prefix = "spring.application.hosts.client")
 public class CorsProperties {
     private String client;
 

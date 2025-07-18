@@ -7,14 +7,13 @@ spring:
     hosts:
       client: ${HOST_CLIENT}
       server: ${HOST_SERVER}
-    paths:
-      client:
-        payment_success: ${PAYMENT_SUCCESS_PATH}
+
     security:
       jwt:
         secret_key: ${SECRET_KEY}
         access_token_expiration: ${TOKEN_ACCESS_EXPIRATION}
         refresh_token_expiration: ${TOKEN_REFRESH_EXPIRATION}
+
     configs:
       cron:
         raffles_completion: ${RAFFLES_COMPLETION_CRON}
