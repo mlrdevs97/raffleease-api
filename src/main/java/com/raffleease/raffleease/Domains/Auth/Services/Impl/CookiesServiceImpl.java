@@ -6,6 +6,7 @@ import jakarta.servlet.http.Cookie;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import lombok.RequiredArgsConstructor;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.ResponseCookie;
 import org.springframework.stereotype.Service;
 
@@ -16,8 +17,13 @@ import static org.springframework.http.HttpHeaders.SET_COOKIE;
 @RequiredArgsConstructor
 @Service
 public class CookiesServiceImpl implements CookiesService {
+
+    @Value("${spring.application.security.cookie_domain}")
+    private String cookieDomain;
+
     public void addCookie(HttpServletResponse response, String name, String value, long maxAge) {
         ResponseCookie.ResponseCookieBuilder cookieBuilder = ResponseCookie.from(name, value)
+                .domain(cookieDomain)
                 .sameSite("None")
                 .secure(true)
                 .httpOnly(true)
