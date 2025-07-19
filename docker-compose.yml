@@ -1,6 +1,6 @@
 services:
   app:
-    image: mlrdevs/raffleease:latest
+    image: mlrdevs/raffleease_api:latest
     build: .
     container_name: raffleease_api
     ports:
