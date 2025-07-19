@@ -9,6 +9,7 @@ spring:
       server: ${HOST_SERVER}
 
     security:
+      cookie_domain: ${COOKIE_DOMAIN}
       jwt:
         secret_key: ${SECRET_KEY}
         access_token_expiration: ${TOKEN_ACCESS_EXPIRATION}
