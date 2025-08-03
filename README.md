@@ -41,6 +41,7 @@ What began as a tailored solution for a single association has since evolved int
 -   🖼️ **Filesystem-Based Media Handling:** Uploaded media is stored and managed on the filesystem with metadata tracking. The system handles file validation, path organization, and secure URL generation.
 -   🧪 **Integration Testing with Testcontainers:** The application uses Testcontainers to run full-stack integration tests against real instances of services like PostgreSQL, ensuring high test fidelity and reproducible environments.
 -   🔁 **HTTP Filters and Interceptors:** Custom filters are used to log requests, sanitize headers, and manage token extraction. Interceptors manage audit trails and enrich security contexts.
+-   🧩 **Aspect-Oriented Programming for Cross-Cutting Concerns:** The application leverages Aspect-Oriented Programming (AOP) to modularize cross-cutting concerns that span multiple parts of the codebase. This approach is used to transparently apply logic such as rate limiting and role-based authorization without polluting the core business logic.    
 -   📁 **Configuration via Environment Variables and Docker:** All sensitive or environment-specific settings are managed through environment variables. The application is fully containerized using Docker, with services orchestrated via Docker Compose for local development and deployment.
 
 ---
